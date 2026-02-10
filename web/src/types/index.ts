@@ -1,0 +1,67 @@
+export interface User {
+  id: string;
+  email: string;
+  name: string | null;
+  avatarUrl: string | null;
+  createdAt: string;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  color: string;
+  icon: string | null;
+  isDefault: boolean;
+  order: number;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string | null;
+  isCompleted: boolean;
+  completedAt: string | null;
+  scheduledStart: string | null;
+  scheduledEnd: string | null;
+  scheduledAllDay?: boolean;
+  deadline: string | null;
+  priority: number;
+  recurrenceRule: string | null;
+  imageUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+  categoryId: string | null;
+  category: Category | null;
+}
+
+export interface Event {
+  id: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  startTime: string;
+  endTime: string;
+  isAllDay: boolean;
+  recurrenceRule: string | null;
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+  categoryId: string | null;
+  category: Category | null;
+  // For recurring event instances
+  originalEventId?: string;
+  isRecurringInstance?: boolean;
+}
+
+export interface CalendarItem {
+  id: string;
+  title: string;
+  start: Date;
+  end: Date;
+  allDay?: boolean;
+  type: 'task' | 'event';
+  color?: string;
+  data: Task | Event;
+  classNames?: string[];
+}

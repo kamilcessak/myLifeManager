@@ -1,0 +1,25 @@
+{
+  "name": "my-life-manager",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "api",
+    "web",
+    "shared"
+  ],
+  "scripts": {
+    "api:dev": "yarn workspace api dev",
+    "api:build": "yarn workspace api build",
+    "web:dev": "yarn workspace web dev",
+    "web:build": "yarn workspace web build",
+    "db:migrate": "yarn workspace api prisma migrate dev",
+    "db:generate": "yarn workspace api prisma generate",
+    "db:studio": "yarn workspace api prisma studio"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

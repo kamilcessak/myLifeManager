@@ -1,0 +1,125 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== USERS ====================
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  categories Category[]
+  tasks      Task[]
+  events     Event[]
+
+  @@map("users")
+}
+
+// ==================== CATEGORIES ====================
+// Domyślne: "Dom", "Firma" - ale użytkownik może tworzyć własne
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("#3B82F6") // Tailwind blue-500
+  icon      String?
+  isDefault Boolean  @default(false)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks  Task[]
+  events Event[]
+
+  @@unique([userId, name])
+  @@map("categories")
+}
+
+// ==================== TASKS ====================
+// Zadania - mogą być "niezaplanowane" (w Inbox) lub "zaplanowane" (na kalendarzu)
+model Task {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  
+  // Status
+  isCompleted   Boolean   @default(false)
+  completedAt   DateTime?
+  
+  // Scheduling - null oznacza "w Inbox", wypełnione = "zaplanowane"
+  scheduledStart   DateTime?
+  scheduledEnd     DateTime?
+  scheduledAllDay  Boolean   @default(false) // true = tylko dzień, bez konkretnej godziny
+  
+  // Deadline (opcjonalny - "do kiedy" niezależnie od scheduledStart)
+  deadline    DateTime?
+  
+  // Priority: 1 = low, 2 = medium, 3 = high, 4 = urgent
+  priority    Int       @default(2)
+  
+  // Recurrence (format RRULE z iCalendar)
+  recurrenceRule String?
+  
+  // Attachment (zdjęcie)
+  imageUrl    String?
+  
+  // Metadata
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([userId, isCompleted])
+  @@index([userId, scheduledStart])
+  @@index([userId, deadline])
+  @@map("tasks")
+}
+
+// ==================== EVENTS ====================
+// Wydarzenia - zawsze mają sztywny czas (start + end)
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  location    String?
+  
+  // Czas - wydarzenia ZAWSZE mają czas
+  startTime   DateTime
+  endTime     DateTime
+  isAllDay    Boolean  @default(false)
+  
+  // Recurrence (format RRULE z iCalendar)
+  recurrenceRule String?
+  
+  // Metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([userId, startTime])
+  @@map("events")
+}

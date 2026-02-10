@@ -1,0 +1,314 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles */
+body {
+  @apply bg-gray-50 text-gray-900 antialiased;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400;
+}
+
+/* FullCalendar custom styles */
+.fc {
+  @apply h-full;
+}
+
+.fc .fc-toolbar-title {
+  @apply text-xl font-semibold text-gray-800;
+}
+
+/* Toolbar buttons - ensure text stays visible on hover */
+.fc .fc-button {
+  background-color: #fff !important;
+  border: 1px solid #d1d5db !important;
+  color: #374151 !important;
+  font-weight: 500;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.fc .fc-button:hover {
+  background-color: #f3f4f6 !important;
+  border-color: #9ca3af !important;
+  color: #111827 !important;
+}
+
+.fc .fc-button:focus {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+.fc .fc-button-active {
+  background-color: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  color: #fff !important;
+}
+
+.fc .fc-button-active:hover {
+  background-color: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #fff !important;
+}
+
+.fc .fc-col-header-cell {
+  @apply py-3 font-medium text-gray-600 bg-gray-50;
+}
+
+.fc .fc-timegrid-slot {
+  @apply border-gray-200;
+  height: 48px;
+}
+
+.fc .fc-timegrid-slot-label {
+  @apply text-xs text-gray-500;
+}
+
+.fc .fc-event {
+  @apply border-0 rounded-md shadow-sm cursor-pointer;
+}
+
+.fc .fc-event:hover {
+  @apply shadow-md;
+}
+
+/* ========== TASK vs EVENT distinction ========== */
+
+/* Task card in calendar - checkbox icon, dashed left border */
+.fc-event-task {
+  border-left: 4px dashed currentColor !important;
+  position: relative;
+  overflow: visible;
+}
+
+.fc-event-task .fc-event-main {
+  padding-left: 2px;
+}
+
+.fc-event-task .fc-event-main-frame {
+  padding-left: 4px;
+}
+
+.fc-event-task .fc-event-title-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fc-event-task .fc-event-title-container::before {
+  content: '☐';
+  font-size: 11px;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.fc-event-task .fc-event-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Ensure text is visible in time grid (block events) */
+.fc-timegrid-event.fc-event-task .fc-event-time,
+.fc-timegrid-event.fc-event-task .fc-event-title,
+.fc-daygrid-block-event.fc-event-task .fc-event-time,
+.fc-daygrid-block-event.fc-event-task .fc-event-title {
+  color: white !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+/* For dot events (Time-based in DayGrid), keep default color */
+.fc-daygrid-dot-event.fc-event-task .fc-event-time,
+.fc-daygrid-dot-event.fc-event-task .fc-event-title {
+  color: #1f2937 !important; /* Force dark gray text */
+  text-shadow: none !important;
+  font-weight: 500;
+}
+
+/* Completed task in calendar */
+.fc-event-task-completed {
+  border-left-color: #9ca3af !important;
+  background: repeating-linear-gradient(
+    -45deg,
+    #f3f4f6,
+    #f3f4f6 3px,
+    #e5e7eb 3px,
+    #e5e7eb 6px
+  ) !important;
+  opacity: 0.85;
+}
+
+/* For completed dot events */
+.fc-daygrid-dot-event.fc-event-task-completed .fc-event-title,
+.fc-daygrid-dot-event.fc-event-task-completed .fc-event-time {
+  text-decoration: line-through;
+  color: #9ca3af !important;
+}
+
+/* For completed block events */
+.fc-timegrid-event.fc-event-task-completed .fc-event-title,
+.fc-timegrid-event.fc-event-task-completed .fc-event-time,
+.fc-daygrid-block-event.fc-event-task-completed .fc-event-title,
+.fc-daygrid-block-event.fc-event-task-completed .fc-event-time {
+  text-decoration: line-through;
+  color: #4b5563 !important;
+  text-shadow: none !important;
+  font-weight: 500;
+}
+
+.fc-event-task-completed .fc-event-title-container::before {
+  content: '☑';
+  color: #4b5563;
+  font-weight: bold;
+}
+
+/* Event card in calendar - solid, clean look */
+.fc-event-event {
+  border-left: 4px solid currentColor !important;
+}
+
+.fc-timegrid-event.fc-event-event .fc-event-time,
+.fc-timegrid-event.fc-event-event .fc-event-title,
+.fc-daygrid-block-event.fc-event-event .fc-event-time,
+.fc-daygrid-block-event.fc-event-event .fc-event-title {
+  color: white !important;
+}
+
+.fc-daygrid-dot-event.fc-event-event .fc-event-time,
+.fc-daygrid-dot-event.fc-event-event .fc-event-title {
+  color: inherit !important;
+}
+
+/* Drag & Drop styles */
+.fc-event-dragging {
+  @apply opacity-75 shadow-lg;
+}
+
+/* External draggable task */
+.draggable-task {
+  @apply cursor-grab active:cursor-grabbing;
+}
+
+.draggable-task.dragging {
+  @apply opacity-50;
+}
+
+/* Task card styles */
+.task-card {
+  @apply bg-white rounded-lg border border-gray-200 p-3 shadow-sm 
+         hover:shadow-md hover:border-gray-300 
+         transition-all duration-200 cursor-grab active:cursor-grabbing;
+}
+
+.task-card.completed {
+  @apply opacity-60 bg-gray-50;
+}
+
+.task-card .task-title {
+  @apply font-medium text-gray-900 line-clamp-2;
+}
+
+.task-card.completed .task-title {
+  @apply line-through text-gray-500;
+}
+
+/* Category badge */
+.category-badge {
+  @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+}
+
+/* Priority indicators */
+.priority-urgent {
+  @apply border-l-4 border-l-red-500;
+}
+
+.priority-high {
+  @apply border-l-4 border-l-orange-500;
+}
+
+.priority-medium {
+  @apply border-l-4 border-l-yellow-500;
+}
+
+.priority-low {
+  @apply border-l-4 border-l-gray-300;
+}
+
+/* Split view layout */
+.split-view {
+  @apply flex h-[calc(100vh-64px)];
+}
+
+.split-view-left {
+  @apply w-[380px] min-w-[320px] max-w-[480px] border-r border-gray-200 bg-white;
+}
+
+.split-view-right {
+  @apply flex-1 bg-white overflow-hidden;
+}
+
+/* Inbox panel */
+.inbox-panel {
+  @apply h-full flex flex-col;
+}
+
+.inbox-header {
+  @apply px-4 py-3 border-b border-gray-200 flex items-center justify-between;
+}
+
+.inbox-tabs {
+  @apply flex gap-1 px-4 py-2 border-b border-gray-100 bg-gray-50;
+}
+
+.inbox-tab {
+  @apply px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 
+         hover:bg-gray-200 transition-colors;
+}
+
+.inbox-tab.active {
+  @apply bg-white text-gray-900 shadow-sm;
+}
+
+.inbox-list {
+  @apply flex-1 overflow-y-auto p-4 space-y-3;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Modal overlay */
+.modal-overlay {
+  @apply fixed inset-0 bg-black/50 flex items-center justify-center z-50;
+}
+
+.modal-content {
+  @apply bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto;
+}
