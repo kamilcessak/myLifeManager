@@ -40,6 +40,7 @@ const createTaskSchema = z.object({
   scheduledAllDay: z.boolean().optional(),
   recurrenceRule: z.string().optional(),
   imageUrl: z.string().url().optional(),
+  reminderMinutes: z.number().int().min(0).nullable().optional(),
 });
 
 const updateTaskSchema = z.object({
@@ -54,6 +55,7 @@ const updateTaskSchema = z.object({
   recurrenceRule: z.string().optional(),
   imageUrl: z.string().url().optional(),
   isCompleted: z.boolean().optional(),
+  reminderMinutes: z.number().int().min(0).nullable().optional(),
 });
 
 const querySchema = z.object({
@@ -210,6 +212,8 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
         scheduledStart: data.scheduledStart ? new Date(data.scheduledStart) : undefined,
         scheduledEnd: data.scheduledEnd ? new Date(data.scheduledEnd) : undefined,
         scheduledAllDay: data.scheduledAllDay ?? false,
+        reminderMinutes: data.reminderMinutes ?? null,
+        reminderSent: false,
       },
       include: taskInclude,
     });
@@ -240,6 +244,11 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
       throw new ApiError('Task not found', 404);
     }
 
+    const shouldResetReminder =
+      data.reminderMinutes !== undefined ||
+      data.scheduledStart !== undefined ||
+      data.deadline !== undefined;
+
     const task = await prisma.task.update({
       where: { id: req.params.id },
       data: {
@@ -249,6 +258,8 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
         scheduledEnd: data.scheduledEnd ? new Date(data.scheduledEnd) : data.scheduledEnd === null ? null : undefined,
         scheduledAllDay: data.scheduledAllDay !== undefined ? data.scheduledAllDay : undefined,
         completedAt: data.isCompleted ? new Date() : data.isCompleted === false ? null : undefined,
+        reminderMinutes: data.reminderMinutes !== undefined ? (data.reminderMinutes ?? null) : undefined,
+        ...(shouldResetReminder ? { reminderSent: false } : {}),
       },
       include: taskInclude,
     });

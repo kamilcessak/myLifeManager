@@ -39,6 +39,7 @@ const createEventSchema = z.object({
   endTime: dateString,
   isAllDay: z.boolean().default(false),
   recurrenceRule: z.string().optional(),
+  reminderMinutes: z.number().int().min(0).nullable().optional(),
 });
 
 const updateEventSchema = createEventSchema.partial();
@@ -176,6 +177,8 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
         userId: req.user!.id,
         startTime: new Date(data.startTime),
         endTime: new Date(data.endTime),
+        reminderMinutes: data.reminderMinutes ?? null,
+        reminderSent: false,
       },
       include: eventCategoryInclude,
     });
@@ -214,12 +217,17 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
       }
     }
 
+    const shouldResetReminder =
+      data.reminderMinutes !== undefined || data.startTime !== undefined;
+
     const event = await prisma.event.update({
       where: { id: req.params.id },
       data: {
         ...data,
         startTime: data.startTime ? new Date(data.startTime) : undefined,
         endTime: data.endTime ? new Date(data.endTime) : undefined,
+        reminderMinutes: data.reminderMinutes !== undefined ? (data.reminderMinutes ?? null) : undefined,
+        ...(shouldResetReminder ? { reminderSent: false } : {}),
       },
       include: eventCategoryInclude,
     });

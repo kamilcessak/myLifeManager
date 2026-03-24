@@ -67,6 +67,7 @@ export const tasksApi = {
     scheduledAllDay?: boolean;
     recurrenceRule?: string;
     imageUrl?: string;
+    reminderMinutes?: number | null;
   }) => api.post("/tasks", data),
 
   update: (
@@ -83,6 +84,7 @@ export const tasksApi = {
       recurrenceRule: string;
       imageUrl: string;
       isCompleted: boolean;
+      reminderMinutes: number | null;
     }>,
   ) => api.patch(`/tasks/${id}`, data),
 
@@ -115,6 +117,7 @@ export const eventsApi = {
     endTime: string;
     isAllDay?: boolean;
     recurrenceRule?: string;
+    reminderMinutes?: number | null;
   }) => api.post("/events", data),
 
   update: (
@@ -128,6 +131,7 @@ export const eventsApi = {
       endTime: string;
       isAllDay: boolean;
       recurrenceRule: string;
+      reminderMinutes: number | null;
     }>,
   ) => api.patch(`/events/${id}`, data),
 
@@ -175,6 +179,18 @@ export const attachmentsApi = {
   },
 
   delete: (id: string) => api.delete(`/attachments/${id}`),
+};
+
+// Notifications
+export const notificationsApi = {
+  getVapidPublicKey: () =>
+    api.get<{ status: string; data: { key: string } }>('/notifications/vapidPublicKey'),
+
+  subscribe: (subscription: PushSubscriptionJSON) =>
+    api.post('/notifications/subscribe', subscription),
+
+  unsubscribe: (endpoint: string) =>
+    api.delete('/notifications/unsubscribe', { data: { endpoint } }),
 };
 
 // Search

@@ -25,8 +25,24 @@ model User {
   tasks      Task[]
   events     Event[]
   attachmentsPending Attachment[] @relation("UserPendingAttachments")
+  pushSubscriptions  PushSubscription[]
 
   @@map("users")
+}
+
+// ==================== PUSH SUBSCRIPTIONS ====================
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 // ==================== CATEGORIES ====================
@@ -78,6 +94,10 @@ model Task {
   
   // Attachment (zdjęcie)
   imageUrl    String?
+
+  // Reminder (null = brak powiadomienia)
+  reminderMinutes Int?
+  reminderSent    Boolean @default(false)
   
   // Metadata
   createdAt   DateTime  @default(now())
@@ -93,6 +113,8 @@ model Task {
   @@index([userId, isCompleted])
   @@index([userId, scheduledStart])
   @@index([userId, deadline])
+  @@index([reminderSent, scheduledStart])
+  @@index([reminderSent, deadline])
   @@map("tasks")
 }
 
@@ -111,6 +133,10 @@ model Event {
   
   // Recurrence (format RRULE z iCalendar)
   recurrenceRule String?
+
+  // Reminder (null = brak powiadomienia)
+  reminderMinutes Int?
+  reminderSent    Boolean @default(false)
   
   // Metadata
   createdAt   DateTime @default(now())
@@ -124,6 +150,7 @@ model Event {
   attachments Attachment[]
 
   @@index([userId, startTime])
+  @@index([reminderSent, startTime])
   @@map("events")
 }
 

@@ -42,6 +42,8 @@ export interface Task {
   priority: number;
   recurrenceRule: string | null;
   imageUrl: string | null;
+  reminderMinutes: number | null;
+  reminderSent: boolean;
   createdAt: string;
   updatedAt: string;
   userId: string;
@@ -59,12 +61,13 @@ export interface Event {
   endTime: string;
   isAllDay: boolean;
   recurrenceRule: string | null;
+  reminderMinutes: number | null;
+  reminderSent: boolean;
   createdAt: string;
   updatedAt: string;
   userId: string;
   categoryId: string | null;
   category: Category | null;
-  // For recurring event instances
   originalEventId?: string;
   isRecurringInstance?: boolean;
   attachments?: Attachment[];

@@ -6,6 +6,7 @@ import type { Event, Category, Attachment } from '../types';
 import axios from 'axios';
 import { eventsApi, categoriesApi, attachmentsApi } from '../lib/api';
 import AttachmentPanel from './AttachmentPanel';
+import ReminderPicker from './ReminderPicker';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 
@@ -72,6 +73,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
       : format(new Date(Date.now() + 60 * 60 * 1000), "yyyy-MM-dd'T'HH:mm"),
     isAllDay: event?.isAllDay || false,
     recurrenceRule: event?.recurrenceRule || '',
+    reminderMinutes: event?.reminderMinutes ?? null,
   });
 
   const selectedCategory = categories.find((category) => category.id === formData.categoryId);
@@ -85,6 +87,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
         endTime: new Date(data.endTime).toISOString(),
         categoryId: data.categoryId || undefined,
         recurrenceRule: data.recurrenceRule || undefined,
+        reminderMinutes: data.reminderMinutes,
       });
     },
     onSuccess: async (response, vars) => {
@@ -144,6 +147,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
         endTime: new Date(data.endTime).toISOString(),
         categoryId: data.categoryId || undefined,
         recurrenceRule: data.recurrenceRule || undefined,
+        reminderMinutes: data.reminderMinutes,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
@@ -423,6 +427,13 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
               ))}
             </select>
           </div>
+
+          {/* Reminder */}
+          <ReminderPicker
+            value={formData.reminderMinutes}
+            onChange={(val) => setFormData({ ...formData, reminderMinutes: val })}
+            disabled={mode === 'view'}
+          />
         </form>
 
         {/* Footer */}

@@ -4,6 +4,7 @@ import { X, Clock, Flag, Trash2, CalendarCheck, ChevronDown, Edit2 } from 'lucid
 import { Task, Category, Attachment } from '../types';
 import { tasksApi, attachmentsApi } from '../lib/api';
 import AttachmentPanel from './AttachmentPanel';
+import ReminderPicker from './ReminderPicker';
 import { cn, getPriorityChipClass, getPriorityLabel, normalizePriority } from '../lib/utils';
 import { useTheme } from '../context/ThemeContext';
 import { useEscapeToClose } from '../hooks/useEscapeToClose';
@@ -59,6 +60,7 @@ export default function TaskModal({ task, categories, onClose, initialMode = 'ed
     scheduledEnd: task?.scheduledEnd
       ? format(new Date(task.scheduledEnd), "yyyy-MM-dd'T'HH:mm")
       : format(startOfHour(addHours(new Date(), 2)), "yyyy-MM-dd'T'HH:mm"),
+    reminderMinutes: task?.reminderMinutes ?? null,
   });
   const selectedCategory = categories.find((category) => category.id === formData.categoryId);
   const normalizedPriority = normalizePriority(formData.priority);
@@ -107,6 +109,7 @@ export default function TaskModal({ task, categories, onClose, initialMode = 'ed
         categoryId: data.categoryId || undefined,
         priority: data.priority,
         deadline: data.deadline ? new Date(data.deadline).toISOString() : undefined,
+        reminderMinutes: data.reminderMinutes,
       };
 
       if (data.showOnCalendar) {
@@ -181,6 +184,7 @@ export default function TaskModal({ task, categories, onClose, initialMode = 'ed
         categoryId: data.categoryId || undefined,
         priority: data.priority,
         deadline: data.deadline ? new Date(data.deadline).toISOString() : undefined,
+        reminderMinutes: data.reminderMinutes,
       };
 
       // Handle calendar scheduling
@@ -443,6 +447,15 @@ export default function TaskModal({ task, categories, onClose, initialMode = 'ed
               disabled={mode === 'view'}
             />
           </div>
+
+          {/* Reminder */}
+          {(formData.showOnCalendar || formData.deadline) && (
+            <ReminderPicker
+              value={formData.reminderMinutes}
+              onChange={(val) => setFormData({ ...formData, reminderMinutes: val })}
+              disabled={mode === 'view'}
+            />
+          )}
 
           {/* Show on Calendar — outer box: w light jak reszta formularza (białe tło), bez ciemnej szarej ramki */}
           <div

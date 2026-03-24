@@ -1,7 +1,8 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
-import { Calendar, Check, ChevronDown, LogOut, Monitor, Moon, User, Sun } from 'lucide-react';
+import { Bell, BellOff, BellRing, Calendar, Check, ChevronDown, LogOut, Monitor, Moon, User, Sun } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { ThemeMode, useTheme } from '../context/ThemeContext';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 import SearchBar from './SearchBar';
 
 interface LayoutProps {
@@ -11,6 +12,7 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const { user, logout } = useAuthStore();
   const { theme, setTheme } = useTheme();
+  const { permission, isSubscribed, subscribe, unsubscribe } = usePushNotifications();
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -60,6 +62,28 @@ export default function Layout({ children }: LayoutProps) {
         </div>
 
         <div className="flex items-center gap-4">
+          {permission !== 'unsupported' && (
+            <button
+              onClick={isSubscribed ? unsubscribe : subscribe}
+              className="relative p-2 rounded-lg app-text-muted hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)] transition-colors"
+              title={
+                permission === 'denied'
+                  ? 'Powiadomienia zablokowane w przeglądarce'
+                  : isSubscribed
+                    ? 'Wyłącz powiadomienia'
+                    : 'Włącz powiadomienia'
+              }
+              disabled={permission === 'denied' || permission === 'loading'}
+            >
+              {permission === 'denied' ? (
+                <BellOff className="w-5 h-5" />
+              ) : isSubscribed ? (
+                <BellRing className="w-5 h-5 text-blue-500" />
+              ) : (
+                <Bell className="w-5 h-5" />
+              )}
+            </button>
+          )}
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setIsAccountMenuOpen((prev) => !prev)}
@@ -93,6 +117,56 @@ export default function Layout({ children }: LayoutProps) {
                     </button>
                   ))}
                 </div>
+
+                {permission !== 'unsupported' && (
+                  <>
+                    <div className="my-2 h-px bg-[var(--app-border)]" />
+
+                    <p className="px-2 pb-2 text-xs font-semibold app-text-muted">Powiadomienia push</p>
+
+                    {permission === 'denied' ? (
+                      <div className="px-2 py-2 text-xs app-text-muted">
+                        <span className="flex items-center gap-2">
+                          <BellOff className="w-4 h-4 shrink-0" />
+                          Zablokowane w przeglądarce. Zmień w ustawieniach witryny.
+                        </span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          if (isSubscribed) {
+                            await unsubscribe();
+                          } else {
+                            await subscribe();
+                          }
+                          setIsAccountMenuOpen(false);
+                        }}
+                        disabled={permission === 'loading'}
+                        className="w-full flex items-center justify-between rounded-md px-2 py-2 text-sm app-text hover:bg-[var(--app-surface-muted)]"
+                      >
+                        <span className="flex items-center gap-2">
+                          {isSubscribed ? (
+                            <BellRing className="w-4 h-4 text-blue-500" />
+                          ) : (
+                            <Bell className="w-4 h-4" />
+                          )}
+                          {isSubscribed ? 'Włączone' : 'Wyłączone'}
+                        </span>
+                        <span
+                          className={`inline-block w-8 h-5 rounded-full relative transition-colors ${
+                            isSubscribed ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                              isSubscribed ? 'translate-x-3.5' : 'translate-x-0.5'
+                            }`}
+                          />
+                        </span>
+                      </button>
+                    )}
+                  </>
+                )}
 
                 <div className="my-2 h-px bg-[var(--app-border)]" />
 

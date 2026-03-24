@@ -13,6 +13,8 @@ import categoriesRoutes from "./routes/categories.js";
 import uploadRoutes from "./routes/upload.js";
 import attachmentsRoutes from "./routes/attachments.js";
 import searchRoutes from "./routes/search.js";
+import notificationsRoutes from "./routes/notifications.js";
+import { startReminderCron } from "./cron/reminders.js";
 
 // Load environment variables
 dotenv.config();
@@ -46,6 +48,7 @@ app.use("/api/categories", categoriesRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/attachments", attachmentsRoutes);
 app.use("/api/search", searchRoutes);
+app.use("/api/notifications", notificationsRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {
@@ -59,6 +62,8 @@ app.use(errorHandler);
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📚 API docs: http://localhost:${PORT}/api/health`);
+
+  startReminderCron();
 });
 
 export default app;
