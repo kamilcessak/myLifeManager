@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, MapPin, Calendar, Repeat, Trash2 } from 'lucide-react';
+import { X, MapPin, Calendar, Repeat, Trash2, Edit2 } from 'lucide-react';
 import { Event, Category } from '../types';
 import { eventsApi, categoriesApi } from '../lib/api';
 import toast from 'react-hot-toast';
@@ -10,6 +10,7 @@ interface EventModalProps {
   event: Event | null;
   initialDateRange: { start: Date; end: Date } | null;
   onClose: () => void;
+  initialMode?: 'view' | 'edit';
 }
 
 const recurrenceOptions = [
@@ -21,9 +22,10 @@ const recurrenceOptions = [
   { value: 'FREQ=YEARLY;INTERVAL=1', label: 'Co rok' },
 ];
 
-export default function EventModal({ event, initialDateRange, onClose }: EventModalProps) {
+export default function EventModal({ event, initialDateRange, onClose, initialMode = 'edit' }: EventModalProps) {
   const queryClient = useQueryClient();
   const isEditing = !!event;
+  const [mode, setMode] = useState<'view' | 'edit'>(isEditing ? initialMode : 'edit');
 
   const { data: categoriesData } = useQuery({
     queryKey: ['categories'],
@@ -129,7 +131,7 @@ export default function EventModal({ event, initialDateRange, onClose }: EventMo
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">
-            {isEditing ? 'Edytuj wydarzenie' : 'Nowe wydarzenie'}
+            {isEditing ? (mode === 'view' ? 'Podgląd wydarzenia' : 'Edytuj wydarzenie') : 'Nowe wydarzenie'}
           </h2>
           <button
             onClick={onClose}
@@ -139,7 +141,7 @@ export default function EventModal({ event, initialDateRange, onClose }: EventMo
           </button>
         </div>
 
-        {/* Form */}
+        {/* Form / View */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Title */}
           <div>
@@ -152,7 +154,8 @@ export default function EventModal({ event, initialDateRange, onClose }: EventMo
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               placeholder="Nazwa wydarzenia"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              autoFocus
+              autoFocus={mode !== 'view'}
+              readOnly={mode === 'view'}
             />
           </div>
 
@@ -167,6 +170,7 @@ export default function EventModal({ event, initialDateRange, onClose }: EventMo
               placeholder="Dodatkowe szczegóły..."
               rows={2}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+              readOnly={mode === 'view'}
             />
           </div>
 
@@ -184,6 +188,7 @@ export default function EventModal({ event, initialDateRange, onClose }: EventMo
               onChange={(e) => setFormData({ ...formData, location: e.target.value })}
               placeholder="Gdzie?"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              readOnly={mode === 'view'}
             />
           </div>
 
@@ -196,6 +201,7 @@ export default function EventModal({ event, initialDateRange, onClose }: EventMo
               value={formData.categoryId}
               onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              disabled={mode === 'view'}
             >
               <option value="">Brak kategorii</option>
               {categories.map((category) => (
@@ -214,6 +220,7 @@ export default function EventModal({ event, initialDateRange, onClose }: EventMo
               checked={formData.isAllDay}
               onChange={(e) => setFormData({ ...formData, isAllDay: e.target.checked })}
               className="w-4 h-4 text-blue-500 rounded border-gray-300 focus:ring-blue-500"
+              disabled={mode === 'view'}
             />
             <label htmlFor="isAllDay" className="text-sm font-medium text-gray-700">
               Wydarzenie całodniowe
@@ -245,6 +252,7 @@ export default function EventModal({ event, initialDateRange, onClose }: EventMo
                   })
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                disabled={mode === 'view'}
               />
             </div>
             <div>
@@ -267,6 +275,7 @@ export default function EventModal({ event, initialDateRange, onClose }: EventMo
                   })
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                disabled={mode === 'view'}
               />
             </div>
           </div>
@@ -283,6 +292,7 @@ export default function EventModal({ event, initialDateRange, onClose }: EventMo
               value={formData.recurrenceRule}
               onChange={(e) => setFormData({ ...formData, recurrenceRule: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              disabled={mode === 'view'}
             >
               {recurrenceOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -317,13 +327,24 @@ export default function EventModal({ event, initialDateRange, onClose }: EventMo
             >
               Anuluj
             </button>
-            <button
-              onClick={handleSubmit}
-              disabled={createMutation.isPending || updateMutation.isPending}
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-            >
-              {isEditing ? 'Zapisz' : 'Utwórz'}
-            </button>
+            {mode === 'view' && isEditing ? (
+              <button
+                type="button"
+                onClick={() => setMode('edit')}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+              >
+                <Edit2 className="w-4 h-4" />
+                Edytuj
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={createMutation.isPending || updateMutation.isPending}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+              >
+                {isEditing ? 'Zapisz' : 'Utwórz'}
+              </button>
+            )}
           </div>
         </div>
       </div>

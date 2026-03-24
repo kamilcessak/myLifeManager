@@ -1,4 +1,4 @@
-# Time Blocking Master
+# My Life Manager
 
 Aplikacja do zarządzania czasem w stylu Time Blocking. Łączy listę zadań (Inbox) z kalendarzem, umożliwiając przeciąganie zadań na konkretne godziny.
 

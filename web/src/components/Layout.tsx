@@ -18,7 +18,7 @@ export default function Layout({ children }: LayoutProps) {
             <Calendar className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-gray-900">Time Blocking Master</h1>
+            <h1 className="text-lg font-semibold text-gray-900">My Life Manager</h1>
             <p className="text-xs text-gray-500">Zarządzaj czasem efektywnie</p>
           </div>
         </div>

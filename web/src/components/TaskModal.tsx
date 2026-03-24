@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Calendar, Clock, Flag, Trash2, CalendarCheck } from 'lucide-react';
+import { X, Clock, Flag, Trash2, CalendarCheck, ChevronDown, Edit2 } from 'lucide-react';
 import { Task, Category } from '../types';
 import { tasksApi } from '../lib/api';
 import { cn } from '../lib/utils';
@@ -11,11 +11,14 @@ interface TaskModalProps {
   task: Task | null;
   categories: Category[];
   onClose: () => void;
+  initialMode?: 'view' | 'edit';
 }
 
-export default function TaskModal({ task, categories, onClose }: TaskModalProps) {
+export default function TaskModal({ task, categories, onClose, initialMode = 'edit' }: TaskModalProps) {
   const queryClient = useQueryClient();
   const isEditing = !!task;
+  const [mode, setMode] = useState<'view' | 'edit'>(isEditing ? initialMode : 'edit');
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
 
   // Determine if task is already on calendar
   const isOnCalendar = !!task?.scheduledStart;
@@ -39,6 +42,7 @@ export default function TaskModal({ task, categories, onClose }: TaskModalProps)
       ? format(new Date(task.scheduledEnd), "yyyy-MM-dd'T'HH:mm")
       : format(startOfHour(addHours(new Date(), 2)), "yyyy-MM-dd'T'HH:mm"),
   });
+  const selectedCategory = categories.find((category) => category.id === formData.categoryId);
 
   // Auto-enable calendar when deadline is set
   useEffect(() => {
@@ -191,7 +195,7 @@ export default function TaskModal({ task, categories, onClose }: TaskModalProps)
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">
-            {isEditing ? 'Edytuj zadanie' : 'Nowe zadanie'}
+            {isEditing ? (mode === 'view' ? 'Podgląd zadania' : 'Edytuj zadanie') : 'Nowe zadanie'}
           </h2>
           <button
             onClick={onClose}
@@ -201,7 +205,7 @@ export default function TaskModal({ task, categories, onClose }: TaskModalProps)
           </button>
         </div>
 
-        {/* Form */}
+        {/* Form / View */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Title */}
           <div>
@@ -214,7 +218,8 @@ export default function TaskModal({ task, categories, onClose }: TaskModalProps)
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               placeholder="Co musisz zrobić?"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              autoFocus
+              autoFocus={mode !== 'view'}
+              readOnly={mode === 'view'}
             />
           </div>
 
@@ -229,6 +234,7 @@ export default function TaskModal({ task, categories, onClose }: TaskModalProps)
               placeholder="Dodatkowe szczegóły..."
               rows={2}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+              readOnly={mode === 'view'}
             />
           </div>
 
@@ -237,18 +243,57 @@ export default function TaskModal({ task, categories, onClose }: TaskModalProps)
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Kategoria
             </label>
-            <select
-              value={formData.categoryId}
-              onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">Brak kategorii</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => mode !== 'view' && setIsCategoryDropdownOpen((prev) => !prev)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white hover:border-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
+                disabled={mode === 'view'}
+              >
+                <span className="flex items-center gap-2 text-sm text-gray-700">
+                  {selectedCategory ? (
+                    <>
+                      <span
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: selectedCategory.color }}
+                      />
+                      {selectedCategory.name}
+                    </>
+                  ) : (
+                    'Brak kategorii'
+                  )}
+                </span>
+                <ChevronDown className="w-4 h-4 text-gray-500" />
+              </button>
+              {isCategoryDropdownOpen && mode !== 'view' && (
+                <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg py-1 max-h-56 overflow-y-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData({ ...formData, categoryId: '' });
+                      setIsCategoryDropdownOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    Brak kategorii
+                  </button>
+                  {categories.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      onClick={() => {
+                        setFormData({ ...formData, categoryId: category.id });
+                        setIsCategoryDropdownOpen(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: category.color }} />
+                      {category.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Priority */}
@@ -264,7 +309,8 @@ export default function TaskModal({ task, categories, onClose }: TaskModalProps)
                 <button
                   key={p.value}
                   type="button"
-                  onClick={() => setFormData({ ...formData, priority: p.value })}
+                  onClick={() => mode !== 'view' && setFormData({ ...formData, priority: p.value })}
+                  disabled={mode === 'view'}
                   className={cn(
                     'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all',
                     formData.priority === p.value
@@ -291,6 +337,7 @@ export default function TaskModal({ task, categories, onClose }: TaskModalProps)
               value={formData.deadline}
               onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              disabled={mode === 'view'}
             />
           </div>
 
@@ -307,6 +354,7 @@ export default function TaskModal({ task, categories, onClose }: TaskModalProps)
                 checked={formData.showOnCalendar}
                 onChange={(e) => setFormData({ ...formData, showOnCalendar: e.target.checked })}
                 className="w-5 h-5 text-blue-500 rounded border-gray-300 focus:ring-blue-500"
+                disabled={mode === 'view'}
               />
               <span className="flex items-center gap-2 font-medium text-gray-900">
                 <CalendarCheck className="w-5 h-5 text-blue-500" />
@@ -322,6 +370,7 @@ export default function TaskModal({ task, categories, onClose }: TaskModalProps)
                     checked={formData.scheduledAllDay}
                     onChange={(e) => setFormData({ ...formData, scheduledAllDay: e.target.checked })}
                     className="w-4 h-4 text-blue-500 rounded border-gray-300 focus:ring-blue-500"
+                    disabled={mode === 'view'}
                   />
                   <span className="text-sm font-medium text-gray-700">
                     W tym dniu (bez konkretnej godziny)
@@ -338,6 +387,7 @@ export default function TaskModal({ task, categories, onClose }: TaskModalProps)
                       value={formData.scheduledDate}
                       onChange={(e) => setFormData({ ...formData, scheduledDate: e.target.value })}
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      disabled={mode === 'view'}
                     />
                   </div>
                 ) : (
@@ -351,6 +401,7 @@ export default function TaskModal({ task, categories, onClose }: TaskModalProps)
                         value={formData.scheduledStart}
                         onChange={(e) => setFormData({ ...formData, scheduledStart: e.target.value })}
                         className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        disabled={mode === 'view'}
                       />
                     </div>
                     <div>
@@ -362,6 +413,7 @@ export default function TaskModal({ task, categories, onClose }: TaskModalProps)
                         value={formData.scheduledEnd}
                         onChange={(e) => setFormData({ ...formData, scheduledEnd: e.target.value })}
                         className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        disabled={mode === 'view'}
                       />
                     </div>
                   </div>
@@ -395,13 +447,24 @@ export default function TaskModal({ task, categories, onClose }: TaskModalProps)
             >
               Anuluj
             </button>
-            <button
-              onClick={handleSubmit}
-              disabled={createMutation.isPending || updateMutation.isPending}
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-            >
-              {isEditing ? 'Zapisz' : 'Utwórz'}
-            </button>
+            {mode === 'view' && isEditing ? (
+              <button
+                type="button"
+                onClick={() => setMode('edit')}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+              >
+                <Edit2 className="w-4 h-4" />
+                Edytuj
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={createMutation.isPending || updateMutation.isPending}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+              >
+                {isEditing ? 'Zapisz' : 'Utwórz'}
+              </button>
+            )}
           </div>
         </div>
       </div>

@@ -87,34 +87,18 @@ body {
   @apply shadow-md;
 }
 
+/* Month view "more" button */
+.fc .fc-daygrid-more-link {
+  @apply inline-flex items-center px-2 py-0.5 mt-1 rounded text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100;
+}
+
 /* ========== TASK vs EVENT distinction ========== */
 
-/* Task card in calendar - checkbox icon, dashed left border */
+/* Task card in calendar */
 .fc-event-task {
-  border-left: 4px dashed currentColor !important;
+  border-left: 3px solid currentColor !important;
   position: relative;
-  overflow: visible;
-}
-
-.fc-event-task .fc-event-main {
-  padding-left: 2px;
-}
-
-.fc-event-task .fc-event-main-frame {
-  padding-left: 4px;
-}
-
-.fc-event-task .fc-event-title-container {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.fc-event-task .fc-event-title-container::before {
-  content: '☐';
-  font-size: 11px;
-  opacity: 0.8;
-  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .fc-event-task .fc-event-title {
@@ -142,15 +126,7 @@ body {
 
 /* Completed task in calendar */
 .fc-event-task-completed {
-  border-left-color: #9ca3af !important;
-  background: repeating-linear-gradient(
-    -45deg,
-    #f3f4f6,
-    #f3f4f6 3px,
-    #e5e7eb 3px,
-    #e5e7eb 6px
-  ) !important;
-  opacity: 0.85;
+  opacity: 0.4;
 }
 
 /* For completed dot events */
@@ -166,20 +142,13 @@ body {
 .fc-daygrid-block-event.fc-event-task-completed .fc-event-title,
 .fc-daygrid-block-event.fc-event-task-completed .fc-event-time {
   text-decoration: line-through;
-  color: #4b5563 !important;
-  text-shadow: none !important;
+  color: white !important;
   font-weight: 500;
-}
-
-.fc-event-task-completed .fc-event-title-container::before {
-  content: '☑';
-  color: #4b5563;
-  font-weight: bold;
 }
 
 /* Event card in calendar - solid, clean look */
 .fc-event-event {
-  border-left: 4px solid currentColor !important;
+  border-left: 3px solid currentColor !important;
 }
 
 .fc-timegrid-event.fc-event-event .fc-event-time,
@@ -192,6 +161,36 @@ body {
 .fc-daygrid-dot-event.fc-event-event .fc-event-time,
 .fc-daygrid-dot-event.fc-event-event .fc-event-title {
   color: inherit !important;
+}
+
+/* Shared event content with icon and text */
+.fc-item-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+
+.fc-item-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.fc-item-text {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fc-item-time,
+.fc-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Drag & Drop styles */
@@ -212,7 +211,7 @@ body {
 .task-card {
   @apply bg-white rounded-lg border border-gray-200 p-3 shadow-sm 
          hover:shadow-md hover:border-gray-300 
-         transition-all duration-200 cursor-grab active:cursor-grabbing;
+         transition duration-150 cursor-grab active:cursor-grabbing;
 }
 
 .task-card.completed {
@@ -230,6 +229,31 @@ body {
 /* Category badge */
 .category-badge {
   @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+}
+
+/* Task info chips (priority + scheduled) */
+.task-info-chip {
+  @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium;
+}
+
+.task-info-chip-priority-4 {
+  @apply bg-red-100 text-red-700;
+}
+
+.task-info-chip-priority-3 {
+  @apply bg-orange-100 text-orange-700;
+}
+
+.task-info-chip-priority-2 {
+  @apply bg-amber-100 text-amber-700;
+}
+
+.task-info-chip-priority-1 {
+  @apply bg-slate-100 text-slate-700;
+}
+
+.task-info-chip-scheduled {
+  @apply bg-gray-100 text-gray-600;
 }
 
 /* Priority indicators */
@@ -272,12 +296,15 @@ body {
 }
 
 .inbox-tabs {
-  @apply flex gap-1 px-4 py-2 border-b border-gray-100 bg-gray-50;
+  @apply flex gap-1 px-4 py-2 border-b border-gray-100 bg-gray-50 overflow-x-auto;
+  scrollbar-width: thin;
 }
 
 .inbox-tab {
   @apply px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 
          hover:bg-gray-200 transition-colors;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .inbox-tab.active {

@@ -1,16 +1,15 @@
 import { useMemo } from 'react';
 import { Check, Clock, Calendar, Image, GripVertical } from 'lucide-react';
 import { Task } from '../types';
-import { cn, formatRelativeDate, getDeadlineColor, getPriorityColor, getPriorityLabel } from '../lib/utils';
+import { cn, formatRelativeDate, getDeadlineColor, getPriorityLabel } from '../lib/utils';
 
 interface TaskCardProps {
   task: Task;
-  onToggleComplete?: (id: string, completed: boolean) => void;
+  onToggleComplete?: (id: string, currentStatus: boolean) => void;
   onEdit?: (task: Task) => void;
-  draggable?: boolean;
 }
 
-export default function TaskCard({ task, onToggleComplete, onEdit, draggable = true }: TaskCardProps) {
+export default function TaskCard({ task, onToggleComplete, onEdit }: TaskCardProps) {
   const priorityStyle = useMemo(() => {
     switch (task.priority) {
       case 4:
@@ -34,18 +33,13 @@ export default function TaskCard({ task, onToggleComplete, onEdit, draggable = t
         task.isCompleted && 'completed'
       )}
       onClick={() => onEdit?.(task)}
-      draggable={draggable && !task.isCompleted}
       data-task-id={task.id}
-      data-task-data={JSON.stringify(task)}
-      onDragStart={(e) => {
-        e.dataTransfer.setData('taskId', task.id);
-        e.dataTransfer.setData('taskData', JSON.stringify(task));
-        e.dataTransfer.effectAllowed = 'move';
-      }}
+      data-task-title={task.title}
+      data-task-color={categoryColor}
     >
       <div className="flex items-start gap-3">
         {/* Drag handle */}
-        {draggable && !task.isCompleted && (
+        {!task.isCompleted && (
           <div className="text-gray-400 cursor-grab mt-0.5">
             <GripVertical className="w-4 h-4" />
           </div>
@@ -61,7 +55,7 @@ export default function TaskCard({ task, onToggleComplete, onEdit, draggable = t
           )}
           onClick={(e) => {
             e.stopPropagation();
-            onToggleComplete?.(task.id, !task.isCompleted);
+            onToggleComplete?.(task.id, task.isCompleted);
           }}
         >
           {task.isCompleted && <Check className="w-3 h-3" />}
@@ -87,7 +81,7 @@ export default function TaskCard({ task, onToggleComplete, onEdit, draggable = t
             )}
 
             {/* Priority */}
-            <span className={cn('category-badge', getPriorityColor(task.priority))}>
+            <span className={cn('task-info-chip', `task-info-chip-priority-${task.priority}`)}>
               {getPriorityLabel(task.priority)}
             </span>
 
@@ -101,9 +95,9 @@ export default function TaskCard({ task, onToggleComplete, onEdit, draggable = t
 
             {/* Scheduled */}
             {task.scheduledStart && (
-              <span className="flex items-center gap-1 text-xs text-blue-600">
+              <span className="task-info-chip task-info-chip-scheduled">
                 <Calendar className="w-3 h-3" />
-                Zaplanowane
+                W kalendarzu
               </span>
             )}
 
