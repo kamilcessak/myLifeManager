@@ -6,6 +6,20 @@ import { ApiError } from '../middleware/errorHandler.js';
 
 const router = Router();
 
+const taskInclude = {
+  category: {
+    select: {
+      id: true,
+      name: true,
+      color: true,
+      icon: true,
+    },
+  },
+  attachments: {
+    orderBy: { createdAt: 'desc' as const },
+  },
+} as const;
+
 // All routes require authentication
 router.use(requireAuth);
 
@@ -102,16 +116,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
 
     const tasks = await prisma.task.findMany({
       where,
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
-          },
-        },
-      },
+      include: taskInclude,
       orderBy: [
         { priority: 'desc' },
         { deadline: 'asc' },
@@ -148,16 +153,7 @@ router.get('/inbox', async (req: Request, res: Response, next: NextFunction) => 
         ],
         ...(categoryId ? { categoryId: String(categoryId) } : {}),
       },
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
-          },
-        },
-      },
+      include: taskInclude,
       orderBy: [
         { priority: 'desc' },
         { deadline: 'asc' },
@@ -184,6 +180,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       },
       include: {
         category: true,
+        attachments: { orderBy: { createdAt: 'desc' } },
       },
     });
 
@@ -214,16 +211,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
         scheduledEnd: data.scheduledEnd ? new Date(data.scheduledEnd) : undefined,
         scheduledAllDay: data.scheduledAllDay ?? false,
       },
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
-          },
-        },
-      },
+      include: taskInclude,
     });
 
     res.status(201).json({
@@ -262,16 +250,7 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
         scheduledAllDay: data.scheduledAllDay !== undefined ? data.scheduledAllDay : undefined,
         completedAt: data.isCompleted ? new Date() : data.isCompleted === false ? null : undefined,
       },
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
-          },
-        },
-      },
+      include: taskInclude,
     });
 
     res.json({
@@ -310,16 +289,7 @@ router.patch('/:id/schedule', async (req: Request, res: Response, next: NextFunc
         scheduledStart: new Date(scheduledStart),
         scheduledEnd: new Date(scheduledEnd),
       },
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
-          },
-        },
-      },
+      include: taskInclude,
     });
 
     res.json({
@@ -351,16 +321,7 @@ router.patch('/:id/unschedule', async (req: Request, res: Response, next: NextFu
         scheduledStart: null,
         scheduledEnd: null,
       },
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
-          },
-        },
-      },
+      include: taskInclude,
     });
 
     res.json({

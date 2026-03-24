@@ -1,5 +1,5 @@
 import axios from "axios";
-import { SearchResult } from "../types";
+import { SearchResult, type Attachment } from "../types";
 
 const api = axios.create({
   baseURL: "/api",
@@ -13,6 +13,9 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  if (config.data instanceof FormData) {
+    delete (config.headers as Record<string, string>)["Content-Type"];
   }
   return config;
 });
@@ -146,7 +149,7 @@ export const categoriesApi = {
   delete: (id: string) => api.delete(`/categories/${id}`),
 };
 
-// Upload
+// Upload (legacy obrazów)
 export const uploadApi = {
   upload: (file: File) => {
     const formData = new FormData();
@@ -157,6 +160,21 @@ export const uploadApi = {
   },
 
   delete: (filename: string) => api.delete(`/upload/${filename}`),
+};
+
+export const attachmentsApi = {
+  upload: (file: File, opts: { taskId?: string; eventId?: string }) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (opts.taskId) formData.append("taskId", opts.taskId);
+    if (opts.eventId) formData.append("eventId", opts.eventId);
+    return api.post<{ status: string; data: { attachment: Attachment } }>(
+      "/attachments/upload",
+      formData,
+    );
+  },
+
+  delete: (id: string) => api.delete(`/attachments/${id}`),
 };
 
 // Search

@@ -11,6 +11,7 @@ import tasksRoutes from "./routes/tasks.js";
 import eventsRoutes from "./routes/events.js";
 import categoriesRoutes from "./routes/categories.js";
 import uploadRoutes from "./routes/upload.js";
+import attachmentsRoutes from "./routes/attachments.js";
 import searchRoutes from "./routes/search.js";
 
 // Load environment variables
@@ -34,7 +35,7 @@ app.use(express.urlencoded({ extended: true }));
 configurePassport(passport);
 app.use(passport.initialize());
 
-// Static files for uploads
+// Static files for uploads (katalog `uploads/` w katalogu roboczym API, np. api/uploads)
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // Routes
@@ -43,6 +44,7 @@ app.use("/api/tasks", tasksRoutes);
 app.use("/api/events", eventsRoutes);
 app.use("/api/categories", categoriesRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/attachments", attachmentsRoutes);
 app.use("/api/search", searchRoutes);
 
 // Health check

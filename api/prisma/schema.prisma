@@ -24,6 +24,7 @@ model User {
   categories Category[]
   tasks      Task[]
   events     Event[]
+  attachmentsPending Attachment[] @relation("UserPendingAttachments")
 
   @@map("users")
 }
@@ -87,6 +88,7 @@ model Task {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  attachments Attachment[]
 
   @@index([userId, isCompleted])
   @@index([userId, scheduledStart])
@@ -119,7 +121,42 @@ model Event {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  attachments Attachment[]
 
   @@index([userId, startTime])
   @@map("events")
+}
+
+// ==================== ATTACHMENTS ====================
+// Pliki przypisane do zadania lub wydarzenia (lokalnie w uploads/).
+//
+// Po zmianie schematu uruchom w katalogu api:
+//   npx prisma db push
+// albo (zalecane na produkcji):
+//   npx prisma migrate dev --name add_attachments
+model Attachment {
+  id           String   @id @default(cuid())
+  filename     String
+  originalName String
+  mimetype     String
+  size         Int
+  url          String
+
+  taskId  String?
+  task    Task?  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  eventId String?
+  event   Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  // Oczekujące (przed utworzeniem zadania/wydarzenia) — usuwane po expiresAt (np. 15 min)
+  userId    String?
+  user      User?     @relation("UserPendingAttachments", fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+  @@index([eventId])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("attachments")
 }

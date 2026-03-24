@@ -7,6 +7,20 @@ import { ApiError } from '../middleware/errorHandler.js';
 
 const router = Router();
 
+const eventCategoryInclude = {
+  category: {
+    select: {
+      id: true,
+      name: true,
+      color: true,
+      icon: true,
+    },
+  },
+  attachments: {
+    orderBy: { createdAt: 'desc' as const },
+  },
+} as const;
+
 // All routes require authentication
 router.use(requireAuth);
 
@@ -64,16 +78,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
         ],
         ...(categoryId ? { categoryId } : {}),
       },
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
-          },
-        },
-      },
+      include: eventCategoryInclude,
     });
 
     // Fetch recurring events and expand occurrences
@@ -83,16 +88,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
         recurrenceRule: { not: null },
         ...(categoryId ? { categoryId } : {}),
       },
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
-          },
-        },
-      },
+      include: eventCategoryInclude,
     });
 
     // Expand recurring events
@@ -143,6 +139,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       },
       include: {
         category: true,
+        attachments: { orderBy: { createdAt: 'desc' } },
       },
     });
 
@@ -180,16 +177,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
         startTime: new Date(data.startTime),
         endTime: new Date(data.endTime),
       },
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
-          },
-        },
-      },
+      include: eventCategoryInclude,
     });
 
     res.status(201).json({
@@ -233,16 +221,7 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
         startTime: data.startTime ? new Date(data.startTime) : undefined,
         endTime: data.endTime ? new Date(data.endTime) : undefined,
       },
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
-          },
-        },
-      },
+      include: eventCategoryInclude,
     });
 
     res.json({

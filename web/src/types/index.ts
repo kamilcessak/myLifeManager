@@ -15,6 +15,20 @@ export interface Category {
   order: number;
 }
 
+export interface Attachment {
+  id: string;
+  filename: string;
+  originalName: string;
+  mimetype: string;
+  size: number;
+  url: string;
+  taskId: string | null;
+  eventId: string | null;
+  userId?: string | null;
+  expiresAt?: string | null;
+  createdAt: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -33,6 +47,7 @@ export interface Task {
   userId: string;
   categoryId: string | null;
   category: Category | null;
+  attachments?: Attachment[];
 }
 
 export interface Event {
@@ -52,6 +67,7 @@ export interface Event {
   // For recurring event instances
   originalEventId?: string;
   isRecurringInstance?: boolean;
+  attachments?: Attachment[];
 }
 
 export interface CalendarItem {

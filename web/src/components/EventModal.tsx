@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useEscapeToClose } from '../hooks/useEscapeToClose';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, MapPin, Calendar, Repeat, Trash2, Edit2, ChevronDown } from 'lucide-react';
-import { Event, Category } from '../types';
-import { eventsApi, categoriesApi } from '../lib/api';
+import type { Event, Category, Attachment } from '../types';
+import axios from 'axios';
+import { eventsApi, categoriesApi, attachmentsApi } from '../lib/api';
+import AttachmentPanel from './AttachmentPanel';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 
@@ -40,6 +42,19 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
 
   const categories = categoriesData || [];
 
+  const [attachments, setAttachments] = useState<Attachment[]>(event?.attachments ?? []);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+
+  useEffect(() => {
+    setAttachments(event?.attachments ?? []);
+  }, [event]);
+
+  useEffect(() => {
+    if (!event) setPendingFiles([]);
+  }, [event]);
+
+  const eventParentId = event ? event.originalEventId || event.id : null;
+
   const [formData, setFormData] = useState({
     title: event?.title || '',
     description: event?.description || '',
@@ -62,17 +77,58 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
   const selectedCategory = categories.find((category) => category.id === formData.categoryId);
 
   const createMutation = useMutation({
-    mutationFn: (data: typeof formData) =>
-      eventsApi.create({
+    mutationFn: (vars: { data: typeof formData; queuedFiles: File[] }) => {
+      const { data } = vars;
+      return eventsApi.create({
         ...data,
         startTime: new Date(data.startTime).toISOString(),
         endTime: new Date(data.endTime).toISOString(),
         categoryId: data.categoryId || undefined,
         recurrenceRule: data.recurrenceRule || undefined,
-      }),
-    onSuccess: () => {
+      });
+    },
+    onSuccess: async (response, vars) => {
+      const newEvent = response.data.data.event;
+      const { queuedFiles } = vars;
+      setPendingFiles([]);
+
+      let uploaded = 0;
+      const targetEventId = newEvent.id;
+      for (const file of queuedFiles) {
+        try {
+          const res = await attachmentsApi.upload(file, { eventId: targetEventId });
+          setAttachments((prev) => [res.data.data.attachment, ...prev]);
+          uploaded += 1;
+        } catch (err) {
+          let msg = 'Nie udało się wgrać pliku';
+          if (
+            axios.isAxiosError(err) &&
+            err.response?.data &&
+            typeof err.response.data === 'object' &&
+            'message' in err.response.data
+          ) {
+            msg = String((err.response.data as { message: string }).message);
+          }
+          toast.error(msg);
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
-      toast.success('Wydarzenie utworzone');
+
+      if (queuedFiles.length === 0) {
+        toast.success('Wydarzenie utworzone');
+      } else if (uploaded === queuedFiles.length) {
+        toast.success(
+          uploaded === 1
+            ? 'Wydarzenie utworzone — załącznik wysłany'
+            : `Wydarzenie utworzone — wgrano ${uploaded} załączników`,
+        );
+      } else if (uploaded > 0) {
+        toast.success(`Wydarzenie utworzone — wgrano ${uploaded} z ${queuedFiles.length} plików`);
+      } else {
+        toast.error('Wydarzenie utworzone, ale załączniki nie zostały wgrane');
+      }
+
       onClose();
     },
     onError: () => {
@@ -126,7 +182,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
     if (isEditing) {
       updateMutation.mutate(formData);
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate({ data: formData, queuedFiles: pendingFiles });
     }
   };
 
@@ -185,6 +241,16 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
               readOnly={mode === 'view'}
             />
           </div>
+
+          <AttachmentPanel
+            variant="event"
+            parentId={eventParentId}
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
+            pendingFiles={pendingFiles}
+            onPendingFilesChange={!event ? setPendingFiles : undefined}
+            readOnly={mode === 'view'}
+          />
 
           {/* Location */}
           <div>

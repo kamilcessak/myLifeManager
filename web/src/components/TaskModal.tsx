@@ -1,12 +1,14 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Clock, Flag, Trash2, CalendarCheck, ChevronDown, Edit2 } from 'lucide-react';
-import { Task, Category } from '../types';
-import { tasksApi } from '../lib/api';
+import { Task, Category, Attachment } from '../types';
+import { tasksApi, attachmentsApi } from '../lib/api';
+import AttachmentPanel from './AttachmentPanel';
 import { cn, getPriorityChipClass, getPriorityLabel, normalizePriority } from '../lib/utils';
 import { useTheme } from '../context/ThemeContext';
 import { useEscapeToClose } from '../hooks/useEscapeToClose';
 import toast from 'react-hot-toast';
+import axios from 'axios';
 import { format, addHours, startOfHour, startOfDay, endOfDay } from 'date-fns';
 
 interface TaskModalProps {
@@ -25,6 +27,16 @@ export default function TaskModal({ task, categories, onClose, initialMode = 'ed
   const calendarRowAllDayRef = useRef<HTMLLabelElement>(null);
   const [mode, setMode] = useState<'view' | 'edit'>(isEditing ? initialMode : 'edit');
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>(task?.attachments ?? []);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+
+  useEffect(() => {
+    setAttachments(task?.attachments ?? []);
+  }, [task]);
+
+  useEffect(() => {
+    if (!task) setPendingFiles([]);
+  }, [task]);
 
   // Determine if task is already on calendar
   const isOnCalendar = !!task?.scheduledStart;
@@ -87,7 +99,8 @@ export default function TaskModal({ task, categories, onClose, initialMode = 'ed
   }, [resolvedTheme, formData.showOnCalendar]);
 
   const createMutation = useMutation({
-    mutationFn: (data: typeof formData) => {
+    mutationFn: (vars: { data: typeof formData; queuedFiles: File[] }) => {
+      const { data } = vars;
       const payload: any = {
         title: data.title,
         description: data.description || undefined,
@@ -96,7 +109,6 @@ export default function TaskModal({ task, categories, onClose, initialMode = 'ed
         deadline: data.deadline ? new Date(data.deadline).toISOString() : undefined,
       };
 
-      // Add calendar scheduling if enabled
       if (data.showOnCalendar) {
         if (data.scheduledAllDay && data.scheduledDate) {
           const d = new Date(data.scheduledDate);
@@ -112,10 +124,48 @@ export default function TaskModal({ task, categories, onClose, initialMode = 'ed
 
       return tasksApi.create(payload);
     },
-    onSuccess: () => {
+    onSuccess: async (response, vars) => {
+      const newTask = response.data.data.task;
+      const { queuedFiles } = vars;
+      setPendingFiles([]);
+
+      let uploaded = 0;
+      for (const file of queuedFiles) {
+        try {
+          const res = await attachmentsApi.upload(file, { taskId: newTask.id });
+          setAttachments((prev) => [res.data.data.attachment, ...prev]);
+          uploaded += 1;
+        } catch (err) {
+          let msg = 'Nie udało się wgrać pliku';
+          if (
+            axios.isAxiosError(err) &&
+            err.response?.data &&
+            typeof err.response.data === 'object' &&
+            'message' in err.response.data
+          ) {
+            msg = String((err.response.data as { message: string }).message);
+          }
+          toast.error(msg);
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: ['inbox-tasks'] });
       queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
-      toast.success('Zadanie utworzone');
+
+      if (queuedFiles.length === 0) {
+        toast.success('Zadanie utworzone');
+      } else if (uploaded === queuedFiles.length) {
+        toast.success(
+          uploaded === 1
+            ? 'Zadanie utworzone — załącznik wysłany'
+            : `Zadanie utworzone — wgrano ${uploaded} załączników`,
+        );
+      } else if (uploaded > 0) {
+        toast.success(`Zadanie utworzone — wgrano ${uploaded} z ${queuedFiles.length} plików`);
+      } else {
+        toast.error('Zadanie utworzone, ale załączniki nie zostały wgrane');
+      }
+
       onClose();
     },
     onError: () => {
@@ -206,7 +256,7 @@ export default function TaskModal({ task, categories, onClose, initialMode = 'ed
     if (isEditing) {
       updateMutation.mutate(formData);
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate({ data: formData, queuedFiles: pendingFiles });
     }
   };
 
@@ -266,6 +316,16 @@ export default function TaskModal({ task, categories, onClose, initialMode = 'ed
               readOnly={mode === 'view'}
             />
           </div>
+
+          <AttachmentPanel
+            variant="task"
+            parentId={task?.id ?? null}
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
+            pendingFiles={pendingFiles}
+            onPendingFilesChange={!task ? setPendingFiles : undefined}
+            readOnly={mode === 'view'}
+          />
 
           {/* Category */}
           <div>

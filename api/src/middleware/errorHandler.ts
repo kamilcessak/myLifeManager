@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
+import multer from 'multer';
 
 interface AppError extends Error {
   statusCode?: number;
@@ -13,6 +14,21 @@ export const errorHandler = (
   next: NextFunction
 ): void => {
   console.error('Error:', err);
+
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({
+        status: 'error',
+        message: 'Plik przekracza limit 5 MB',
+      });
+      return;
+    }
+    res.status(400).json({
+      status: 'error',
+      message: err.message,
+    });
+    return;
+  }
 
   // Zod validation errors
   if (err instanceof ZodError) {
