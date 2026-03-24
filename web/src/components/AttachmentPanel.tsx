@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type SetStateAction,
@@ -14,6 +15,7 @@ import toast from 'react-hot-toast';
 import { attachmentsApi } from '../lib/api';
 import { cn } from '../lib/utils';
 import type { Attachment } from '../types';
+import AttachmentPreviewModal, { type AttachmentPreviewPayload } from './AttachmentPreviewModal';
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
@@ -24,9 +26,11 @@ function fileKey(f: File, index: number) {
 function PendingFileRow({
   file,
   onRemove,
+  onPreview,
 }: {
   file: File;
   onRemove: () => void;
+  onPreview?: () => void;
 }) {
   const objectUrl = useMemo(
     () => (file.type.startsWith('image/') ? URL.createObjectURL(file) : null),
@@ -39,30 +43,46 @@ function PendingFileRow({
   }, [objectUrl]);
 
   const isImage = file.type.startsWith('image/');
+  const canPreview =
+    Boolean(onPreview) && (file.type.startsWith('image/') || file.type === 'application/pdf');
+
+  const inner = (
+    <>
+      {isImage && objectUrl ? (
+        <img
+          src={objectUrl}
+          alt=""
+          className="h-12 w-12 shrink-0 rounded-md object-cover"
+        />
+      ) : (
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-gray-100 dark:bg-gray-700">
+          <Paperclip className="h-5 w-5 text-gray-600 dark:text-gray-300" aria-hidden />
+        </div>
+      )}
+      <div className="min-w-0 flex-1 text-left">
+        <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+          {file.name}
+        </span>
+        <span className="text-xs text-amber-800/90 dark:text-amber-400/90">
+          {canPreview ? 'Kliknij, aby podejrzeć · zostanie wysłany po zapisaniu' : 'Zostanie wysłany po zapisaniu'}
+        </span>
+      </div>
+    </>
+  );
 
   return (
     <li className="flex items-center gap-2 rounded-lg border border-dashed border-amber-300/80 bg-amber-50/50 p-2 dark:border-amber-500/30 dark:bg-amber-500/10">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        {isImage && objectUrl ? (
-          <img
-            src={objectUrl}
-            alt=""
-            className="h-12 w-12 shrink-0 rounded-md object-cover"
-          />
-        ) : (
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-gray-100 dark:bg-gray-700">
-            <Paperclip className="h-5 w-5 text-gray-600 dark:text-gray-300" aria-hidden />
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-            {file.name}
-          </span>
-          <span className="text-xs text-amber-800/90 dark:text-amber-400/90">
-            Zostanie wysłany po zapisaniu
-          </span>
-        </div>
-      </div>
+      {canPreview ? (
+        <button
+          type="button"
+          onClick={onPreview}
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left transition hover:bg-amber-100/60 dark:hover:bg-amber-500/15"
+        >
+          {inner}
+        </button>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-center gap-3">{inner}</div>
+      )}
       <button
         type="button"
         onClick={onRemove}
@@ -98,6 +118,54 @@ export default function AttachmentPanel({
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<AttachmentPreviewPayload | null>(null);
+  const previewBlobUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewBlobUrlRef.current) {
+        URL.revokeObjectURL(previewBlobUrlRef.current);
+        previewBlobUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  const closePreview = useCallback(() => {
+    setPreview(null);
+    if (previewBlobUrlRef.current) {
+      URL.revokeObjectURL(previewBlobUrlRef.current);
+      previewBlobUrlRef.current = null;
+    }
+  }, []);
+
+  const openAttachmentPreview = useCallback((a: Attachment) => {
+    const canPreview = a.mimetype.startsWith('image/') || a.mimetype === 'application/pdf';
+    if (!canPreview) return;
+    if (previewBlobUrlRef.current) {
+      URL.revokeObjectURL(previewBlobUrlRef.current);
+      previewBlobUrlRef.current = null;
+    }
+    setPreview({
+      url: a.url,
+      name: a.originalName,
+      mimetype: a.mimetype,
+    });
+  }, []);
+
+  const openPendingFilePreview = useCallback((file: File) => {
+    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') return;
+    if (previewBlobUrlRef.current) {
+      URL.revokeObjectURL(previewBlobUrlRef.current);
+      previewBlobUrlRef.current = null;
+    }
+    const blobUrl = URL.createObjectURL(file);
+    previewBlobUrlRef.current = blobUrl;
+    setPreview({
+      url: blobUrl,
+      name: file.name,
+      mimetype: file.type || 'application/octet-stream',
+    });
+  }, []);
 
   const canQueueLocal = Boolean(!parentId && onPendingFilesChange && !readOnly);
   const canUploadToServer = Boolean(parentId && !readOnly);
@@ -275,6 +343,7 @@ export default function AttachmentPanel({
               onRemove={() =>
                 onPendingFilesChange?.((prev) => prev.filter((_, i) => i !== index))
               }
+              onPreview={() => openPendingFilePreview(file)}
             />
           ))}
         </ul>
@@ -282,17 +351,11 @@ export default function AttachmentPanel({
 
       {attachments.length > 0 && (
         <ul className="flex flex-col gap-2">
-          {attachments.map((a) => (
-            <li
-              key={a.id}
-              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-2 dark:border-gray-600 dark:bg-gray-800/50"
-            >
-              <a
-                href={a.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex min-w-0 flex-1 items-center gap-3 text-left transition hover:opacity-90"
-              >
+          {attachments.map((a) => {
+            const canPreview =
+              a.mimetype.startsWith('image/') || a.mimetype === 'application/pdf';
+            const rowInner = (
+              <>
                 {a.mimetype.startsWith('image/') ? (
                   <img
                     src={a.url}
@@ -308,7 +371,31 @@ export default function AttachmentPanel({
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">
                   {a.originalName}
                 </span>
-              </a>
+              </>
+            );
+            return (
+            <li
+              key={a.id}
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-2 dark:border-gray-600 dark:bg-gray-800/50"
+            >
+              {canPreview ? (
+                <button
+                  type="button"
+                  onClick={() => openAttachmentPreview(a)}
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left transition hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                >
+                  {rowInner}
+                </button>
+              ) : (
+                <a
+                  href={a.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left transition hover:opacity-90"
+                >
+                  {rowInner}
+                </a>
+              )}
               {!readOnly && (
                 <button
                   type="button"
@@ -325,9 +412,11 @@ export default function AttachmentPanel({
                 </button>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
+      <AttachmentPreviewModal payload={preview} onClose={closePreview} />
     </div>
   );
 }
