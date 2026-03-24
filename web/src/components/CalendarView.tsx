@@ -477,20 +477,6 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Legend */}
-      <div className="flex items-center justify-end gap-4 px-4 py-2 border-b border-gray-100 bg-gray-50/50">
-        <div className="flex items-center gap-2 text-xs text-gray-600">
-          <div className="flex items-center gap-1.5">
-            <CheckSquare className="w-4 h-4 text-gray-600" />
-            <span>Zadanie</span>
-          </div>
-          <div className="flex items-center gap-1.5 ml-3">
-            <CalendarCheck className="w-4 h-4 text-gray-600" />
-            <span>Wydarzenie</span>
-          </div>
-        </div>
-      </div>
-
       {/* Calendar */}
       <div className="flex-1 p-4">
         <FullCalendar

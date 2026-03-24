@@ -60,8 +60,16 @@ export interface CalendarItem {
   start: Date;
   end: Date;
   allDay?: boolean;
-  type: 'task' | 'event';
+  type: "task" | "event";
   color?: string;
   data: Task | Event;
   classNames?: string[];
+}
+
+export interface SearchResult {
+  id: string;
+  type: "task" | "event";
+  title: string;
+  description: string | null;
+  date: string;
 }

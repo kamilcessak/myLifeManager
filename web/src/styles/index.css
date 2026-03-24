@@ -2,10 +2,49 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme tokens */
+:root {
+  --app-bg: #f9fafb;
+  --app-surface: #ffffff;
+  --app-surface-muted: #f3f4f6;
+  --app-text: #111827;
+  --app-text-muted: #6b7280;
+  --app-border: #e5e7eb;
+}
+
+html.light {
+  color-scheme: light;
+}
+
+html.dark {
+  --app-bg: #111827;
+  --app-surface: #1f2937;
+  --app-surface-muted: #374151;
+  --app-text: #f3f4f6;
+  --app-text-muted: #9ca3af;
+  --app-border: #374151;
+  color-scheme: dark;
+}
+
+/* Shared semantic text helpers */
+.app-text {
+  color: var(--app-text);
+}
+
+.app-text-muted {
+  color: var(--app-text-muted);
+}
+
 /* Base styles */
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  background-color: var(--app-bg);
+  color: var(--app-text);
+  @apply antialiased;
   font-family: 'Inter', system-ui, sans-serif;
+}
+
+.dark body {
+  @apply bg-gray-900 text-gray-100;
 }
 
 /* Custom scrollbar */
@@ -33,6 +72,10 @@ body {
 
 .fc .fc-toolbar-title {
   @apply text-xl font-semibold text-gray-800;
+}
+
+html.dark .fc .fc-toolbar-title {
+  @apply text-gray-100;
 }
 
 /* Toolbar buttons - ensure text stays visible on hover */
@@ -66,8 +109,62 @@ body {
   color: #fff !important;
 }
 
+html.dark .fc .fc-button {
+  background-color: #374151 !important;
+  border-color: #4b5563 !important;
+  color: #f3f4f6 !important;
+}
+
+html.dark .fc .fc-button:hover {
+  background-color: #4b5563 !important;
+  border-color: #6b7280 !important;
+  color: #ffffff !important;
+}
+
+/* --- TRYB CIEMNY FULLCALENDAR --- */
+html.dark .fc {
+  /* Glowne tlo i ramki */
+  --fc-page-bg-color: transparent;
+  --fc-border-color: #374151; /* tailwind gray-700 */
+
+  /* Teksty */
+  --fc-neutral-text-color: #9ca3af; /* tailwind gray-400 */
+  color: #f3f4f6; /* tailwind gray-100 dla ogolnego tekstu */
+
+  /* Zastapienie brzydkiego zoltego podswietlenia dzisiejszego dnia! */
+  --fc-today-bg-color: rgba(255, 255, 255, 0.05);
+
+  /* Kolor tla przy zaznaczaniu/rozciaganiu */
+  --fc-highlight-color: rgba(255, 255, 255, 0.1);
+  --fc-neutral-bg-color: #1f2937; /* Tlo naglowkow - tailwind gray-800 */
+
+  /* Przyciski kalendarza */
+  --fc-button-text-color: #f3f4f6;
+  --fc-button-bg-color: #374151;
+  --fc-button-border-color: #4b5563;
+  --fc-button-hover-bg-color: #4b5563;
+  --fc-button-hover-border-color: #6b7280;
+  --fc-button-active-bg-color: #2563eb; /* Aktywny niebieski */
+  --fc-button-active-border-color: #2563eb;
+}
+
+/* Wymuszenie poprawnego tla dla bialych naglowkow dni (pon, wt, sr...) */
+html.dark .fc-theme-standard th,
+html.dark .fc-theme-standard .fc-scrollgrid-section-header > td {
+  background-color: #1f2937 !important;
+  border-color: #374151 !important;
+}
+
+html.dark .fc-theme-standard td {
+  border-color: #374151 !important;
+}
+
 .fc .fc-col-header-cell {
   @apply py-3 font-medium text-gray-600 bg-gray-50;
+}
+
+html.dark .fc .fc-col-header-cell {
+  @apply text-gray-300 bg-gray-800;
 }
 
 .fc .fc-timegrid-slot {
@@ -77,6 +174,10 @@ body {
 
 .fc .fc-timegrid-slot-label {
   @apply text-xs text-gray-500;
+}
+
+html.dark .fc .fc-timegrid-slot-label {
+  @apply text-gray-400;
 }
 
 .fc .fc-event {
@@ -90,6 +191,10 @@ body {
 /* Month view "more" button */
 .fc .fc-daygrid-more-link {
   @apply inline-flex items-center px-2 py-0.5 mt-1 rounded text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100;
+}
+
+html.dark .fc .fc-daygrid-more-link {
+  @apply text-blue-200 bg-blue-500/20 hover:bg-blue-500/30;
 }
 
 /* ========== TASK vs EVENT distinction ========== */
@@ -209,21 +314,43 @@ body {
 
 /* Task card styles */
 .task-card {
-  @apply bg-white rounded-lg border border-gray-200 p-3 shadow-sm 
-         hover:shadow-md hover:border-gray-300 
-         transition duration-150 cursor-grab active:cursor-grabbing;
+  background-color: var(--app-surface);
+  border-color: var(--app-border);
+  color: #111827;
+  @apply rounded-lg border p-3 shadow-sm hover:shadow-md transition duration-150 cursor-grab active:cursor-grabbing;
+}
+
+html.light .task-card:hover {
+  border-color: #d1d5db;
+}
+
+html.light .task-card:active,
+html.light .task-card:focus,
+html.light .task-card:focus-within {
+  background-color: #ffffff;
+  color: #111827;
+  border-color: #d1d5db;
+}
+
+html.dark .task-card {
+  color: #f3f4f6;
+  @apply hover:border-gray-600;
 }
 
 .task-card.completed {
-  @apply opacity-60 bg-gray-50;
+  @apply opacity-60 bg-gray-50 dark:bg-gray-800/70;
 }
 
 .task-card .task-title {
-  @apply font-medium text-gray-900 line-clamp-2;
+  @apply font-medium text-gray-900 line-clamp-2 dark:text-gray-100;
+}
+
+html.light .task-card .task-title {
+  color: #111827;
 }
 
 .task-card.completed .task-title {
-  @apply line-through text-gray-500;
+  @apply line-through text-gray-500 dark:text-gray-400;
 }
 
 /* Category badge */
@@ -237,23 +364,48 @@ body {
 }
 
 .task-info-chip-priority-4 {
-  @apply bg-red-100 text-red-700;
+  @apply bg-red-100 text-red-900 dark:bg-red-500/20 dark:text-red-300;
 }
 
 .task-info-chip-priority-3 {
-  @apply bg-orange-100 text-orange-700;
+  @apply bg-orange-100 text-orange-900 dark:bg-orange-500/20 dark:text-orange-300;
 }
 
 .task-info-chip-priority-2 {
-  @apply bg-amber-100 text-amber-700;
+  @apply bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300;
 }
 
 .task-info-chip-priority-1 {
-  @apply bg-slate-100 text-slate-700;
+  @apply bg-slate-100 text-slate-900 dark:bg-slate-500/20 dark:text-slate-300;
+}
+
+/* Modal zadania: w light pełny kontrast tekstu (preflight / inherit na button potrafi go zabić) */
+html.light .modal-content .task-modal-priority-btn.task-info-chip-priority-4,
+html[data-theme="light"] .modal-content .task-modal-priority-btn.task-info-chip-priority-4 {
+  color: #7f1d1d !important;
+  -webkit-text-fill-color: #7f1d1d;
+}
+
+html.light .modal-content .task-modal-priority-btn.task-info-chip-priority-3,
+html[data-theme="light"] .modal-content .task-modal-priority-btn.task-info-chip-priority-3 {
+  color: #7c2d12 !important;
+  -webkit-text-fill-color: #7c2d12;
+}
+
+html.light .modal-content .task-modal-priority-btn.task-info-chip-priority-2,
+html[data-theme="light"] .modal-content .task-modal-priority-btn.task-info-chip-priority-2 {
+  color: #78350f !important;
+  -webkit-text-fill-color: #78350f;
+}
+
+html.light .modal-content .task-modal-priority-btn.task-info-chip-priority-1,
+html[data-theme="light"] .modal-content .task-modal-priority-btn.task-info-chip-priority-1 {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a;
 }
 
 .task-info-chip-scheduled {
-  @apply bg-gray-100 text-gray-600;
+  @apply bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-200;
 }
 
 /* Priority indicators */
@@ -279,11 +431,16 @@ body {
 }
 
 .split-view-left {
-  @apply w-[380px] min-w-[320px] max-w-[480px] border-r border-gray-200 bg-white;
+  width: 380px;
+  min-width: 320px;
+  max-width: 480px;
+  border-right: 1px solid var(--app-border);
+  background-color: var(--app-surface);
 }
 
 .split-view-right {
-  @apply flex-1 bg-white overflow-hidden;
+  @apply flex-1 overflow-hidden;
+  background-color: var(--app-bg);
 }
 
 /* Inbox panel */
@@ -292,23 +449,34 @@ body {
 }
 
 .inbox-header {
-  @apply px-4 py-3 border-b border-gray-200 flex items-center justify-between;
+  @apply px-4 py-3 flex items-center justify-between;
+  border-bottom: 1px solid var(--app-border);
+  background-color: var(--app-surface);
 }
 
 .inbox-tabs {
-  @apply flex gap-1 px-4 py-2 border-b border-gray-100 bg-gray-50 overflow-x-auto;
+  @apply flex gap-1 px-4 py-2 overflow-x-auto;
+  border-bottom: 1px solid var(--app-border);
+  background-color: var(--app-surface-muted);
   scrollbar-width: thin;
 }
 
 .inbox-tab {
-  @apply px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 
-         hover:bg-gray-200 transition-colors;
+  color: var(--app-text-muted);
+  @apply px-3 py-1.5 rounded-md text-sm font-medium hover:bg-gray-200 transition-colors dark:hover:bg-gray-700;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
+html.light .inbox-tab:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
 .inbox-tab.active {
-  @apply bg-white text-gray-900 shadow-sm;
+  background-color: var(--app-surface);
+  color: var(--app-text);
+  @apply shadow-sm;
 }
 
 .inbox-list {
@@ -337,5 +505,311 @@ body {
 }
 
 .modal-content {
-  @apply bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto;
+  background-color: var(--app-surface);
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
+  @apply rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto;
+}
+
+/* Task modal keeps scrollbar inside rounded container */
+.task-modal-content {
+  overflow: hidden;
+}
+
+.task-modal-scroll {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-content input,
+.modal-content textarea,
+.modal-content select {
+  background-color: #ffffff;
+  color: #111827;
+}
+
+html.dark .modal-content input,
+html.dark .modal-content textarea,
+html.dark .modal-content select {
+  background-color: #374151;
+  color: #f3f4f6;
+}
+
+/* Event modal — light: jasne tła, ciemny tekst (preflight / dziedziczenie na buttonach) */
+html.light .event-modal-content,
+html[data-theme="light"] .event-modal-content {
+  background-color: #ffffff;
+  color: #111827;
+  border-color: #e5e7eb;
+}
+
+html.light .event-modal-content .event-modal-header,
+html[data-theme="light"] .event-modal-content .event-modal-header {
+  background-color: #ffffff;
+  border-bottom-color: #e5e7eb;
+}
+
+html.light .event-modal-content .event-modal-title,
+html[data-theme="light"] .event-modal-content .event-modal-title {
+  color: #111827;
+}
+
+html.light .event-modal-content .event-modal-close,
+html[data-theme="light"] .event-modal-content .event-modal-close {
+  color: #4b5563;
+}
+
+html.light .event-modal-content .event-modal-close:hover,
+html[data-theme="light"] .event-modal-content .event-modal-close:hover {
+  background-color: #f3f4f6;
+}
+
+html.light .event-modal-content .event-modal-close svg,
+html[data-theme="light"] .event-modal-content .event-modal-close svg {
+  color: #4b5563;
+}
+
+html.light .event-modal-content .event-modal-label,
+html[data-theme="light"] .event-modal-content .event-modal-label {
+  color: #374151;
+}
+
+html.light .event-modal-content .event-modal-form,
+html[data-theme="light"] .event-modal-content .event-modal-form {
+  background-color: #ffffff;
+  color: #111827;
+}
+
+html.light .event-modal-content .event-modal-footer,
+html[data-theme="light"] .event-modal-content .event-modal-footer {
+  background-color: #ffffff;
+  border-top-color: #e5e7eb;
+}
+
+html.light .event-modal-content .event-modal-cancel,
+html[data-theme="light"] .event-modal-content .event-modal-cancel {
+  background-color: #ffffff;
+  color: #111827;
+  border-color: #d1d5db;
+}
+
+html.light .event-modal-content .event-modal-cancel:hover,
+html[data-theme="light"] .event-modal-content .event-modal-cancel:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+html.light .event-modal-content .event-modal-delete,
+html[data-theme="light"] .event-modal-content .event-modal-delete {
+  background-color: #ffffff;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+html.light .event-modal-content .event-modal-delete:hover,
+html[data-theme="light"] .event-modal-content .event-modal-delete:hover {
+  background-color: #fef2f2;
+  color: #b91c1c;
+}
+
+html.light .modal-content.event-modal-content input.event-modal-checkbox,
+html[data-theme="light"] .modal-content.event-modal-content input.event-modal-checkbox {
+  border-color: #9ca3af;
+  color: #2563eb;
+}
+
+/* Task modal — jawne style light/dark (nie polegają wyłącznie na klasach Tailwind w buildzie) */
+html.light .task-modal-field-label {
+  color: #111827;
+  background-color: transparent;
+}
+
+html.dark .task-modal-field-label {
+  color: #d1d5db;
+  background-color: transparent;
+  padding: 0;
+}
+
+html.light .task-modal-header-title {
+  color: #111827;
+}
+
+html.dark .task-modal-header-title {
+  color: #d1d5db;
+}
+
+html.light .task-modal-close {
+  color: #111827;
+}
+
+html.dark .task-modal-close {
+  color: #d1d5db;
+}
+
+html.light .task-modal-cancel,
+html[data-theme="light"] .task-modal-cancel {
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827;
+  background-color: #ffffff !important;
+  border-color: #d1d5db !important;
+}
+
+html.light .task-modal-cancel:hover,
+html[data-theme="light"] .task-modal-cancel:hover {
+  background-color: #f3f4f6 !important;
+  border-color: #9ca3af !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827;
+}
+
+html.dark .task-modal-cancel {
+  color: #f3f4f6 !important;
+}
+
+html.light .task-modal-category-dropdown {
+  background-color: #ffffff !important;
+  border-color: #e5e7eb !important;
+  color: #030712 !important;
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.08),
+    0 4px 6px -4px rgb(0 0 0 / 0.08);
+}
+
+html.dark .task-modal-category-dropdown {
+  background-color: #1f2937 !important;
+  border-color: #374151 !important;
+  color: #f3f4f6 !important;
+}
+
+html.light .task-modal-category-trigger {
+  background-color: #ffffff !important;
+  color: #030712 !important;
+  border-color: #d1d5db !important;
+  -webkit-text-fill-color: #030712;
+}
+
+html.light .task-modal-category-trigger span {
+  color: #030712 !important;
+  -webkit-text-fill-color: #030712;
+}
+
+html.light .task-modal-category-trigger:hover {
+  border-color: #9ca3af !important;
+}
+
+html.light .task-modal-category-trigger:disabled {
+  opacity: 1 !important;
+  color: #030712 !important;
+  -webkit-text-fill-color: #030712;
+}
+
+html.light .task-modal-category-trigger:disabled span {
+  color: #030712 !important;
+  -webkit-text-fill-color: #030712;
+}
+
+html.dark .task-modal-category-trigger {
+  background-color: #374151 !important;
+  color: #f3f4f6 !important;
+  border-color: #4b5563 !important;
+  -webkit-text-fill-color: #f3f4f6;
+}
+
+html.dark .task-modal-category-trigger span {
+  color: #f3f4f6 !important;
+  -webkit-text-fill-color: #f3f4f6;
+}
+
+html.dark .task-modal-category-trigger:disabled {
+  opacity: 1 !important;
+  color: #f3f4f6 !important;
+  -webkit-text-fill-color: #f3f4f6;
+}
+
+html.dark .task-modal-category-trigger:disabled span {
+  color: #f3f4f6 !important;
+  -webkit-text-fill-color: #f3f4f6;
+}
+
+html.light .task-modal-category-option {
+  background-color: #ffffff !important;
+  color: #030712 !important;
+  -webkit-text-fill-color: #030712;
+}
+
+html.light .task-modal-category-option:hover {
+  background-color: #f3f4f6 !important;
+  color: #030712 !important;
+}
+
+html.dark .task-modal-category-option {
+  background-color: #1f2937 !important;
+  color: #f3f4f6 !important;
+}
+
+html.dark .task-modal-category-option:hover {
+  background-color: #374151 !important;
+}
+
+/* Sekcja kalendarza w modalu zadania — jawne tła (unikamy „ciemnej ramki” w light) */
+html.light .task-modal-calendar-section,
+html[data-theme="light"] .task-modal-calendar-section {
+  background-color: #ffffff !important;
+  border-color: #e5e7eb !important;
+}
+
+html.light .modal-content .task-modal-calendar-section.border-blue-500,
+html[data-theme="light"] .modal-content .task-modal-calendar-section.border-blue-500 {
+  background-color: #eff6ff !important;
+  border-color: #3b82f6 !important;
+}
+
+html.dark .task-modal-calendar-section,
+html[data-theme="dark"] .task-modal-calendar-section {
+  background-color: transparent !important;
+}
+
+html.dark .modal-content .task-modal-calendar-section.border-blue-500,
+html[data-theme="dark"] .modal-content .task-modal-calendar-section.border-blue-500 {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  border-color: #3b82f6 !important;
+}
+
+/* Light: klasa na <html> albo data-theme (ThemeContext ustawia oba) */
+html.light .task-modal-calendar-row,
+html[data-theme="light"] .task-modal-calendar-row {
+  background-color: transparent !important;
+  color: #111827 !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  -webkit-text-fill-color: #111827;
+}
+
+html.light .modal-content input.task-modal-calendar-checkbox,
+html[data-theme="light"] .modal-content input.task-modal-calendar-checkbox {
+  background-color: transparent !important;
+}
+
+html.dark .modal-content input.task-modal-calendar-checkbox,
+html[data-theme="dark"] .modal-content input.task-modal-calendar-checkbox {
+  background-color: transparent !important;
+}
+
+html.light .task-modal-calendar-row svg,
+html[data-theme="light"] .task-modal-calendar-row svg {
+  color: #111827 !important;
+}
+
+html.dark .task-modal-calendar-row,
+html[data-theme="dark"] .task-modal-calendar-row {
+  background-color: transparent !important;
+  color: #f3f4f6 !important;
+  border-color: transparent !important;
+  box-shadow: none;
+  -webkit-text-fill-color: #f3f4f6;
+}
+
+html.dark .task-modal-calendar-row svg,
+html[data-theme="dark"] .task-modal-calendar-row svg {
+  color: #60a5fa !important;
 }

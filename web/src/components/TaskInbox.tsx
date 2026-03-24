@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, MoreHorizontal, Inbox, AlertTriangle, Sun, Sunrise, Calendar, CalendarDays, Check, Edit2, Trash2 } from 'lucide-react';
 import { tasksApi, categoriesApi } from '../lib/api';
@@ -8,6 +9,7 @@ import TaskModal from './TaskModal';
 import EventModal from './EventModal';
 import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
+import { useEscapeToClose } from '../hooks/useEscapeToClose';
 import { isToday, isTomorrow, isPast, isThisWeek } from 'date-fns';
 
 interface TaskSection {
@@ -34,6 +36,8 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const overflowMenuRef = useRef<HTMLDivElement | null>(null);
+  const [overflowMenuPos, setOverflowMenuPos] = useState<{ top: number; right: number } | null>(null);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const queryClient = useQueryClient();
@@ -133,17 +137,42 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
     );
   };
 
+  useLayoutEffect(() => {
+    if (!isMenuOpen || !menuRef.current) {
+      setOverflowMenuPos(null);
+      return;
+    }
+    const updatePosition = () => {
+      if (!menuRef.current) return;
+      const rect = menuRef.current.getBoundingClientRect();
+      setOverflowMenuPos({
+        top: rect.bottom + 6,
+        right: window.innerWidth - rect.right,
+      });
+    };
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    return () => window.removeEventListener('resize', updatePosition);
+  }, [isMenuOpen]);
+
   useEffect(() => {
     if (!isMenuOpen) return;
 
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsMenuOpen(false);
-      }
+      const t = event.target as Node;
+      if (menuRef.current?.contains(t)) return;
+      if (overflowMenuRef.current?.contains(t)) return;
+      setIsMenuOpen(false);
     };
 
+    const closeOnScroll = () => setIsMenuOpen(false);
+
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    window.addEventListener('scroll', closeOnScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', closeOnScroll, true);
+    };
   }, [isMenuOpen]);
 
   useEffect(() => {
@@ -300,9 +329,9 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
       {/* Header */}
       <div className="inbox-header">
         <div className="flex items-center gap-2">
-          <Inbox className="w-5 h-5 text-gray-600" />
-          <h2 className="font-semibold text-gray-900">Task Inbox</h2>
-          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+          <Inbox className="w-5 h-5 app-text-muted" />
+          <h2 className="font-semibold app-text">Task Inbox</h2>
+          <span className="text-xs text-gray-700 bg-gray-50 px-2 py-0.5 rounded-full dark:text-gray-300 dark:bg-gray-700">
             {tasks.length}
           </span>
         </div>
@@ -316,32 +345,41 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
           </button>
           <button
             onClick={() => setIsEventModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg transition-colors"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-gray-900 bg-gray-50 hover:bg-white border border-gray-200 rounded-lg shadow-sm transition-colors dark:text-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600"
             title="Nowe wydarzenie"
           >
             <Calendar className="w-4 h-4" />
           </button>
           <div className="relative" ref={menuRef}>
             <button
+              type="button"
               onClick={() => setIsMenuOpen((prev) => !prev)}
-              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+              className="rounded-lg p-1.5 transition-colors hover:bg-[var(--app-surface-muted)]"
             >
-              <MoreHorizontal className="w-5 h-5 text-gray-500" />
+              <MoreHorizontal className="h-5 w-5 text-[var(--app-text-muted)]" />
             </button>
-            {isMenuOpen && (
-              <div className="absolute right-0 top-10 z-20 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+          </div>
+          {isMenuOpen &&
+            overflowMenuPos &&
+            createPortal(
+              <div
+                ref={overflowMenuRef}
+                className="inbox-overflow-menu fixed z-[200] w-48 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] py-1 shadow-lg"
+                style={{ top: overflowMenuPos.top, right: overflowMenuPos.right }}
+              >
                 <button
+                  type="button"
                   onClick={() => {
                     setIsMenuOpen(false);
                     setIsCategoryManagerOpen(true);
                   }}
-                  className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="w-full px-3 py-2 text-left text-sm text-[var(--app-text)] transition-colors hover:bg-[var(--app-surface-muted)]"
                 >
                   Zarządzaj kategoriami
                 </button>
-              </div>
+              </div>,
+              document.body
             )}
-          </div>
         </div>
       </div>
 
@@ -391,10 +429,10 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
           </div>
         ) : tasks.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <Inbox className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p className="font-medium">Brak zadań w inbox</p>
-            <p className="text-sm mt-1">Dodaj nowe zadanie, aby rozpocząć</p>
+          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+            <Inbox className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+            <p className="font-medium dark:text-gray-300">Brak zadań w inbox</p>
+            <p className="text-sm mt-1 dark:text-gray-500">Dodaj nowe zadanie, aby rozpocząć</p>
           </div>
         ) : (
           <div className="space-y-6">
@@ -407,15 +445,15 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
                 >
                   <span className="flex items-center gap-2">
                     {section.icon}
-                    <span className="text-sm font-semibold text-gray-700">
+                    <span className="text-sm font-semibold app-text">
                       {section.title}
                     </span>
-                    <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                    <span className="text-xs text-gray-700 bg-gray-50 px-1.5 py-0.5 rounded dark:text-gray-300 dark:bg-gray-700">
                       {section.tasks.length}
                     </span>
                   </span>
                   <span className={cn(
-                    "text-gray-400 transition-transform",
+                    "text-gray-400 transition-transform dark:text-gray-500",
                     collapsedSections.has(section.id) ? "rotate-0" : "rotate-90"
                   )}>
                     ›
@@ -458,12 +496,14 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
           onClose={() => setIsEventModalOpen(false)}
         />
       )}
-      {isCategoryManagerOpen && (
-        <CategoryManagerModal
-          categories={categories}
-          onClose={() => setIsCategoryManagerOpen(false)}
-        />
-      )}
+      {isCategoryManagerOpen &&
+        createPortal(
+          <CategoryManagerModal
+            categories={categories}
+            onClose={() => setIsCategoryManagerOpen(false)}
+          />,
+          document.body
+        )}
     </div>
   );
 }
@@ -474,6 +514,7 @@ interface CategoryManagerModalProps {
 }
 
 function CategoryManagerModal({ categories, onClose }: CategoryManagerModalProps) {
+  useEscapeToClose(onClose);
   const queryClient = useQueryClient();
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState('#3b82f6');
@@ -546,51 +587,59 @@ function CategoryManagerModal({ categories, onClose }: CategoryManagerModalProps
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content animate-fade-in max-w-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Zarządzaj kategoriami</h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-            <span className="text-gray-500 text-lg leading-none">×</span>
+      <div
+        className="category-manager-modal modal-content animate-fade-in max-w-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-[var(--app-border)] px-6 py-4">
+          <h2 className="text-lg font-semibold text-[var(--app-text)]">Zarządzaj kategoriami</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)]"
+          >
+            <span className="text-lg leading-none">×</span>
           </button>
         </div>
 
-        <div className="p-6 space-y-5">
-          <div className="rounded-lg border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Dodaj kategorię</h3>
+        <div className="space-y-5 p-6">
+          <div className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4">
+            <h3 className="mb-3 text-sm font-semibold text-[var(--app-text)]">Dodaj kategorię</h3>
             <div className="flex items-center gap-3">
               <input
                 type="text"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="Nazwa kategorii"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="flex-1 rounded-lg border border-[var(--app-border)] px-3 py-2 placeholder:text-[var(--app-text-muted)] focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
               />
               <input
                 type="color"
                 value={newColor}
                 onChange={(e) => setNewColor(e.target.value)}
-                className="w-12 h-10 p-1 border border-gray-300 rounded-lg cursor-pointer bg-white"
+                className="h-10 w-12 cursor-pointer rounded-lg border border-[var(--app-border)] p-1"
               />
               <button
+                type="button"
                 onClick={handleCreate}
                 disabled={createCategoryMutation.isPending}
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+                className="rounded-lg bg-blue-500 px-4 py-2 font-medium text-white transition-colors hover:bg-blue-600 disabled:opacity-50"
               >
                 Dodaj
               </button>
             </div>
           </div>
 
-          <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+          <div className="max-h-[50vh] space-y-2 overflow-y-auto">
             {categories.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-4">Brak kategorii</p>
+              <p className="py-4 text-center text-sm text-[var(--app-text-muted)]">Brak kategorii</p>
             ) : (
               categories.map((category) => {
                 const isEditing = editingId === category.id;
                 return (
                   <div
                     key={category.id}
-                    className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white"
+                    className="flex items-center gap-3 rounded-lg border border-[var(--app-border)] bg-gray-50 p-3 dark:border-white/10 dark:bg-white/[0.09]"
                   >
                     {isEditing ? (
                       <>
@@ -598,24 +647,26 @@ function CategoryManagerModal({ categories, onClose }: CategoryManagerModalProps
                           type="text"
                           value={editingName}
                           onChange={(e) => setEditingName(e.target.value)}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="flex-1 rounded-lg border border-[var(--app-border)] px-3 py-2 placeholder:text-[var(--app-text-muted)] focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                         />
                         <input
                           type="color"
                           value={editingColor}
                           onChange={(e) => setEditingColor(e.target.value)}
-                          className="w-12 h-10 p-1 border border-gray-300 rounded-lg cursor-pointer bg-white"
+                          className="h-10 w-12 cursor-pointer rounded-lg border border-[var(--app-border)] p-1"
                         />
                         <button
+                          type="button"
                           onClick={saveEdit}
                           disabled={updateCategoryMutation.isPending}
-                          className="px-3 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50"
+                          className="rounded-lg bg-blue-500 px-3 py-2 text-sm text-white transition-colors hover:bg-blue-600 disabled:opacity-50"
                         >
                           Zapisz
                         </button>
                         <button
+                          type="button"
                           onClick={() => setEditingId(null)}
-                          className="px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                          className="rounded-lg px-3 py-2 text-sm text-[var(--app-text)] transition-colors hover:bg-gray-200/80 dark:hover:bg-white/12"
                         >
                           Anuluj
                         </button>
@@ -623,21 +674,23 @@ function CategoryManagerModal({ categories, onClose }: CategoryManagerModalProps
                     ) : (
                       <>
                         <div
-                          className="w-4 h-4 rounded-full border border-gray-200"
+                          className="h-4 w-4 rounded-full border border-[var(--app-border)]"
                           style={{ backgroundColor: category.color }}
                         />
-                        <span className="flex-1 text-sm font-medium text-gray-800">{category.name}</span>
+                        <span className="flex-1 text-sm font-medium text-[var(--app-text)]">{category.name}</span>
                         <button
+                          type="button"
                           onClick={() => startEdit(category)}
-                          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                          className="rounded-lg p-2 text-[var(--app-text-muted)] transition-colors hover:bg-gray-200/80 hover:text-[var(--app-text)] dark:hover:bg-white/12"
                           title="Edytuj kategorię"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
+                          type="button"
                           onClick={() => deleteCategoryMutation.mutate(category.id)}
                           disabled={category.isDefault || deleteCategoryMutation.isPending}
-                          className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="rounded-lg p-2 text-red-600 transition-colors hover:bg-red-500/10 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
                           title={category.isDefault ? 'Domyślnej kategorii nie można usunąć' : 'Usuń kategorię'}
                         >
                           <Trash2 className="w-4 h-4" />

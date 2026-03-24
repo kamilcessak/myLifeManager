@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { useEscapeToClose } from '../hooks/useEscapeToClose';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, MapPin, Calendar, Repeat, Trash2, Edit2 } from 'lucide-react';
+import { X, MapPin, Calendar, Repeat, Trash2, Edit2, ChevronDown } from 'lucide-react';
 import { Event, Category } from '../types';
 import { eventsApi, categoriesApi } from '../lib/api';
 import toast from 'react-hot-toast';
@@ -23,9 +24,11 @@ const recurrenceOptions = [
 ];
 
 export default function EventModal({ event, initialDateRange, onClose, initialMode = 'edit' }: EventModalProps) {
+  useEscapeToClose(onClose);
   const queryClient = useQueryClient();
   const isEditing = !!event;
   const [mode, setMode] = useState<'view' | 'edit'>(isEditing ? initialMode : 'edit');
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
 
   const { data: categoriesData } = useQuery({
     queryKey: ['categories'],
@@ -55,6 +58,8 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
     isAllDay: event?.isAllDay || false,
     recurrenceRule: event?.recurrenceRule || '',
   });
+
+  const selectedCategory = categories.find((category) => category.id === formData.categoryId);
 
   const createMutation = useMutation({
     mutationFn: (data: typeof formData) =>
@@ -127,25 +132,32 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content animate-fade-in" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal-content event-modal-content animate-fade-in"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">
+        <div className="event-modal-header flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-transparent">
+          <h2 className="event-modal-title text-lg font-semibold text-gray-900 dark:text-gray-100">
             {isEditing ? (mode === 'view' ? 'Podgląd wydarzenia' : 'Edytuj wydarzenie') : 'Nowe wydarzenie'}
           </h2>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+            className="event-modal-close p-1.5 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
           >
-            <X className="w-5 h-5 text-gray-500" />
+            <X className="w-5 h-5 text-gray-600 dark:text-gray-300" />
           </button>
         </div>
 
         {/* Form / View */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          className="event-modal-form p-6 space-y-4 bg-white text-gray-900 dark:bg-transparent dark:text-gray-100"
+        >
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
               Tytuł
             </label>
             <input
@@ -153,7 +165,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               placeholder="Nazwa wydarzenia"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder:text-gray-400"
               autoFocus={mode !== 'view'}
               readOnly={mode === 'view'}
             />
@@ -161,7 +173,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
               Opis (opcjonalnie)
             </label>
             <textarea
@@ -169,16 +181,16 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="Dodatkowe szczegóły..."
               rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+              className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder:text-gray-400"
               readOnly={mode === 'view'}
             />
           </div>
 
           {/* Location */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
               <span className="flex items-center gap-2">
-                <MapPin className="w-4 h-4" />
+                <MapPin className="w-4 h-4 shrink-0" />
                 Lokalizacja (opcjonalnie)
               </span>
             </label>
@@ -187,29 +199,70 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
               value={formData.location}
               onChange={(e) => setFormData({ ...formData, location: e.target.value })}
               placeholder="Gdzie?"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder:text-gray-400"
               readOnly={mode === 'view'}
             />
           </div>
 
           {/* Category */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
               Kategoria
             </label>
-            <select
-              value={formData.categoryId}
-              onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              disabled={mode === 'view'}
-            >
-              <option value="">Brak kategorii</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => mode !== 'view' && setIsCategoryDropdownOpen((prev) => !prev)}
+                className="task-modal-category-trigger flex w-full items-center justify-between rounded-lg border px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:hover:border-gray-500"
+                disabled={mode === 'view'}
+              >
+                <span className="flex items-center gap-2 text-sm dark:text-gray-100">
+                  {selectedCategory ? (
+                    <>
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: selectedCategory.color }}
+                      />
+                      {selectedCategory.name}
+                    </>
+                  ) : (
+                    'Brak kategorii'
+                  )}
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0" />
+              </button>
+              {isCategoryDropdownOpen && mode !== 'view' && (
+                <div className="task-modal-category-dropdown absolute z-20 mt-1 w-full border rounded-lg shadow-lg py-1 max-h-56 overflow-y-auto border-gray-200 dark:border-gray-700">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData({ ...formData, categoryId: '' });
+                      setIsCategoryDropdownOpen(false);
+                    }}
+                    className="task-modal-category-option w-full px-3 py-2 text-left text-sm"
+                  >
+                    Brak kategorii
+                  </button>
+                  {categories.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      onClick={() => {
+                        setFormData({ ...formData, categoryId: category.id });
+                        setIsCategoryDropdownOpen(false);
+                      }}
+                      className="task-modal-category-option flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
+                    >
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: category.color }}
+                      />
+                      {category.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* All Day */}
@@ -219,10 +272,13 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
               id="isAllDay"
               checked={formData.isAllDay}
               onChange={(e) => setFormData({ ...formData, isAllDay: e.target.checked })}
-              className="w-4 h-4 text-blue-500 rounded border-gray-300 focus:ring-blue-500"
+              className="event-modal-checkbox w-4 h-4 rounded border-gray-400 text-blue-600 focus:ring-blue-500 dark:border-gray-500 dark:text-blue-400"
               disabled={mode === 'view'}
             />
-            <label htmlFor="isAllDay" className="text-sm font-medium text-gray-700">
+            <label
+              htmlFor="isAllDay"
+              className="event-modal-label text-sm font-medium text-gray-800 dark:text-gray-300"
+            >
               Wydarzenie całodniowe
             </label>
           </div>
@@ -230,9 +286,9 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
           {/* Date & Time */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
                 <span className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
+                  <Calendar className="w-4 h-4 shrink-0" />
                   Rozpoczęcie
                 </span>
               </label>
@@ -251,12 +307,12 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
                       : e.target.value,
                   })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                 disabled={mode === 'view'}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
                 Zakończenie
               </label>
               <input
@@ -274,7 +330,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
                       : e.target.value,
                   })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                 disabled={mode === 'view'}
               />
             </div>
@@ -282,16 +338,16 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
 
           {/* Recurrence */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
               <span className="flex items-center gap-2">
-                <Repeat className="w-4 h-4" />
+                <Repeat className="w-4 h-4 shrink-0" />
                 Powtarzanie
               </span>
             </label>
             <select
               value={formData.recurrenceRule}
               onChange={(e) => setFormData({ ...formData, recurrenceRule: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
               disabled={mode === 'view'}
             >
               {recurrenceOptions.map((option) => (
@@ -304,13 +360,13 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
         </form>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+        <div className="event-modal-footer flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-white rounded-b-xl dark:border-gray-700 dark:bg-gray-800/60">
           {isEditing ? (
             <button
               type="button"
               onClick={() => deleteMutation.mutate()}
               disabled={deleteMutation.isPending}
-              className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              className="event-modal-delete flex items-center gap-2 px-3 py-2 border border-red-200 bg-white text-red-700 hover:bg-red-50 rounded-lg transition-colors dark:border-red-500/30 dark:bg-transparent dark:text-red-400 dark:hover:bg-red-500/10"
             >
               <Trash2 className="w-4 h-4" />
               Usuń
@@ -323,7 +379,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+              className="event-modal-cancel px-4 py-2 border border-gray-300 bg-white text-gray-900 hover:bg-gray-100 rounded-lg transition-colors dark:border-gray-600 dark:bg-transparent dark:text-gray-200 dark:hover:bg-gray-700"
             >
               Anuluj
             </button>

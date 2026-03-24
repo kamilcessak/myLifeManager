@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Check, Clock, Calendar, Image, GripVertical } from 'lucide-react';
 import { Task } from '../types';
-import { cn, formatRelativeDate, getDeadlineColor, getPriorityLabel } from '../lib/utils';
+import { cn, formatRelativeDate, getDeadlineColor, getPriorityBorderClass, getPriorityChipClass, getPriorityLabel, normalizePriority } from '../lib/utils';
 
 interface TaskCardProps {
   task: Task;
@@ -10,18 +10,8 @@ interface TaskCardProps {
 }
 
 export default function TaskCard({ task, onToggleComplete, onEdit }: TaskCardProps) {
-  const priorityStyle = useMemo(() => {
-    switch (task.priority) {
-      case 4:
-        return 'border-l-red-500';
-      case 3:
-        return 'border-l-orange-500';
-      case 2:
-        return 'border-l-yellow-500';
-      default:
-        return 'border-l-gray-300';
-    }
-  }, [task.priority]);
+  const normalizedPriority = useMemo(() => normalizePriority(task.priority), [task.priority]);
+  const priorityStyle = useMemo(() => getPriorityBorderClass(task.priority), [task.priority]);
 
   const categoryColor = task.category?.color || '#6b7280';
 
@@ -40,7 +30,7 @@ export default function TaskCard({ task, onToggleComplete, onEdit }: TaskCardPro
       <div className="flex items-start gap-3">
         {/* Drag handle */}
         {!task.isCompleted && (
-          <div className="text-gray-400 cursor-grab mt-0.5">
+          <div className="text-gray-400 dark:text-gray-500 cursor-grab mt-0.5">
             <GripVertical className="w-4 h-4" />
           </div>
         )}
@@ -51,7 +41,7 @@ export default function TaskCard({ task, onToggleComplete, onEdit }: TaskCardPro
             'flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors',
             task.isCompleted
               ? 'bg-green-500 border-green-500 text-white'
-              : 'border-gray-300 hover:border-gray-400'
+              : 'border-gray-300 hover:border-gray-400 dark:border-gray-600 dark:hover:border-gray-500'
           )}
           onClick={(e) => {
             e.stopPropagation();
@@ -81,8 +71,8 @@ export default function TaskCard({ task, onToggleComplete, onEdit }: TaskCardPro
             )}
 
             {/* Priority */}
-            <span className={cn('task-info-chip', `task-info-chip-priority-${task.priority}`)}>
-              {getPriorityLabel(task.priority)}
+            <span className={cn('task-info-chip', getPriorityChipClass(normalizedPriority))}>
+              {getPriorityLabel(normalizedPriority)}
             </span>
 
             {/* Deadline */}
@@ -103,7 +93,7 @@ export default function TaskCard({ task, onToggleComplete, onEdit }: TaskCardPro
 
             {/* Has image */}
             {task.imageUrl && (
-              <span className="text-gray-400">
+              <span className="text-gray-400 dark:text-gray-500">
                 <Image className="w-3 h-3" />
               </span>
             )}
