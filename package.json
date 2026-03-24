@@ -5,7 +5,8 @@
   "workspaces": [
     "api",
     "web",
-    "shared"
+    "shared",
+    "mobile"
   ],
   "scripts": {
     "api:dev": "yarn workspace api dev",
@@ -14,7 +15,11 @@
     "web:build": "yarn workspace web build",
     "db:migrate": "yarn workspace api prisma migrate dev",
     "db:generate": "yarn workspace api prisma generate",
-    "db:studio": "yarn workspace api prisma studio"
+    "db:studio": "yarn workspace api prisma studio",
+    "mobile:start": "yarn workspace mobile start",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

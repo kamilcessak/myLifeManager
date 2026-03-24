@@ -18,25 +18,46 @@ Aplikacja do zarządzania czasem w stylu Time Blocking. Łączy listę zadań (I
 ├── /api          # Backend: Express.js + TypeScript + Prisma
 ├── /web          # Frontend: React + Vite + FullCalendar
 ├── /shared       # Współdzielone typy i walidatory Zod
-└── /mobile       # (planowany) React Native + Expo
+└── /mobile       # Aplikacja mobilna: React Native + Expo
 ```
 
 ## Wymagania
 
 - Node.js >= 18
-- PostgreSQL
 - Yarn
+- Docker + Docker Compose (opcjonalnie, rekomendowane)
 
 ## Instalacja
 
-### 1. Sklonuj repozytorium i zainstaluj zależności
+### Opcja A (rekomendowana): Docker, jeden start całego środowiska
+
+```bash
+cp api/.env.example api/.env
+yarn docker:up
+```
+
+To uruchomi:
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:3001
+- PostgreSQL: localhost:5433
+
+Przydatne komendy:
+
+```bash
+yarn docker:down
+yarn docker:logs
+```
+
+### Opcja B: lokalnie bez Dockera
+
+#### 1. Sklonuj repozytorium i zainstaluj zależności
 
 ```bash
 cd my-life-manager
 yarn install
 ```
 
-### 2. Skonfiguruj bazę danych
+#### 2. Skonfiguruj bazę danych
 
 Utwórz bazę PostgreSQL:
 
@@ -57,14 +78,14 @@ DATABASE_URL="postgresql://postgres:password@localhost:5432/mylifemanager?schema
 JWT_SECRET="twoj-tajny-klucz-jwt"
 ```
 
-### 3. Uruchom migracje bazy danych
+#### 3. Uruchom migracje bazy danych
 
 ```bash
 yarn db:generate
 yarn db:migrate
 ```
 
-### 4. Uruchom aplikację
+#### 4. Uruchom aplikację
 
 W dwóch terminalach:
 
@@ -82,6 +103,20 @@ Aplikacja będzie dostępna pod:
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:3001
 - Prisma Studio (baza danych): `yarn db:studio`
+
+#### 5. Aplikacja mobilna (Expo)
+
+**Terminal 3 - Mobile:**
+```bash
+yarn mobile:start
+```
+
+Otwórz projekt w Expo Go (skanuj QR) lub uruchom emulator (np. `i` dla iOS, `a` dla Android w terminalu Expo).
+
+Aby aplikacja mobilna łączyła się z API:
+- **Emulator iOS:** domyślnie `http://localhost:3001`
+- **Emulator Android:** ustaw w `mobile/.env`: `EXPO_PUBLIC_API_URL=http://10.0.2.2:3001`
+- **Fizyczne urządzenie:** ustaw `EXPO_PUBLIC_API_URL=http://<IP komputera>:3001` (API musi być uruchomione na tym samym LAN)
 
 ## API Endpoints
 
@@ -126,7 +161,7 @@ Aplikacja będzie dostępna pod:
 - Zod (walidacja)
 - rrule (wydarzenia cykliczne)
 
-### Frontend
+### Frontend (Web)
 - React 18
 - Vite
 - TypeScript
@@ -135,6 +170,13 @@ Aplikacja będzie dostępna pod:
 - TanStack Query (React Query)
 - Zustand (state management)
 - date-fns
+
+### Mobile (Expo)
+- React Native (Expo SDK 52)
+- React Navigation (Bottom Tabs)
+- react-native-calendars (ExpandableCalendar + AgendaList)
+- AsyncStorage (token)
+- axios
 
 ## Licencja
 
