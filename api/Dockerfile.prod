@@ -1,0 +1,53 @@
+FROM node:20-bookworm-slim AS builder
+
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends openssl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY package.json yarn.lock ./
+COPY api/package.json ./api/
+COPY web/package.json ./web/
+COPY shared/package.json ./shared/
+
+RUN yarn install --frozen-lockfile
+
+COPY shared/ ./shared/
+COPY api/ ./api/
+
+RUN yarn workspace shared build && \
+    sed -i 's|"./src/index.ts"|"./dist/index.js"|' shared/package.json
+
+RUN cd api && npx prisma generate
+RUN yarn workspace api build
+
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends openssl ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
+    addgroup --system --gid 1001 appgroup && \
+    adduser --system --uid 1001 --ingroup appgroup appuser
+
+COPY --from=builder /app/package.json /app/yarn.lock ./
+COPY --from=builder /app/api/package.json ./api/
+COPY --from=builder /app/web/package.json ./web/
+COPY --from=builder /app/shared/package.json ./shared/
+COPY --from=builder /app/shared/dist ./shared/dist
+
+RUN yarn install --frozen-lockfile && yarn cache clean
+
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/api/dist ./api/dist
+COPY --from=builder /app/api/prisma ./api/prisma
+
+RUN mkdir -p api/uploads && chown -R appuser:appgroup api/uploads
+
+USER appuser
+
+EXPOSE 3001
+
+CMD ["sh", "-c", "cd api && npx prisma migrate deploy && node dist/index.js"]

@@ -19,7 +19,11 @@
     "mobile:start": "yarn workspace mobile start",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f"
+    "docker:logs": "docker compose logs -f",
+    "prod:up": "docker compose -f docker-compose.prod.yml --env-file .env.production up --build -d",
+    "prod:down": "docker compose -f docker-compose.prod.yml --env-file .env.production down",
+    "prod:logs": "docker compose -f docker-compose.prod.yml logs -f",
+    "prod:backup": "bash deploy/backup.sh"
   },
   "devDependencies": {
     "typescript": "^5.3.3"
