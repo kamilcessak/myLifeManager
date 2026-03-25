@@ -133,33 +133,33 @@ export default function Layout({ children }: LayoutProps) {
                       </div>
                     ) : (
                       <button
-                        onClick={async () => {
+                        onClick={() => {
                           if (isSubscribed) {
-                            await unsubscribe();
+                            unsubscribe();
                           } else {
-                            await subscribe();
+                            subscribe();
                           }
-                          setIsAccountMenuOpen(false);
                         }}
                         disabled={permission === 'loading'}
-                        className="w-full flex items-center justify-between rounded-md px-2 py-2 text-sm app-text hover:bg-[var(--app-surface-muted)]"
+                        className="w-full flex items-center justify-between gap-3 rounded-md px-2 py-2 text-sm app-text hover:bg-[var(--app-surface-muted)]"
                       >
-                        <span className="flex items-center gap-2">
+                        <span className="flex items-center gap-2 min-w-0">
                           {isSubscribed ? (
-                            <BellRing className="w-4 h-4 text-blue-500" />
+                            <BellRing className="w-4 h-4 shrink-0 text-blue-500" />
                           ) : (
-                            <Bell className="w-4 h-4" />
+                            <Bell className="w-4 h-4 shrink-0" />
                           )}
-                          {isSubscribed ? 'Włączone' : 'Wyłączone'}
+                          <span className="truncate">{isSubscribed ? 'Włączone' : 'Wyłączone'}</span>
                         </span>
                         <span
-                          className={`inline-block w-8 h-5 rounded-full relative transition-colors ${
+                          aria-hidden="true"
+                          className={`shrink-0 w-9 h-5 rounded-full relative transition-colors duration-200 ${
                             isSubscribed ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
                           }`}
                         >
                           <span
-                            className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                              isSubscribed ? 'translate-x-3.5' : 'translate-x-0.5'
+                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                              isSubscribed ? 'translate-x-4' : 'translate-x-0'
                             }`}
                           />
                         </span>
