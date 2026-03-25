@@ -11,29 +11,40 @@ set -euo pipefail
 APP_DIR="/opt/mylifemanager"
 REPO_URL="${1:-}"
 
+SUDO=""
+if [ "$(id -u)" -ne 0 ]; then
+    if command -v sudo &> /dev/null; then
+        SUDO="sudo"
+    else
+        echo "ERROR: This script requires root privileges. Run with: sudo bash deploy/setup.sh"
+        exit 1
+    fi
+fi
+
 echo "==> Updating system packages..."
-apt-get update && apt-get upgrade -y
+$SUDO apt-get update && $SUDO apt-get upgrade -y
 
 echo "==> Installing essential tools..."
-apt-get install -y curl git ufw fail2ban
+$SUDO apt-get install -y curl git ufw fail2ban
 
 echo "==> Installing Docker..."
 if ! command -v docker &> /dev/null; then
-    curl -fsSL https://get.docker.com | sh
-    systemctl enable docker
-    systemctl start docker
+    curl -fsSL https://get.docker.com | $SUDO sh
+    $SUDO systemctl enable docker
+    $SUDO systemctl start docker
 else
     echo "    Docker already installed."
 fi
 
 echo "==> Configuring firewall (UFW)..."
-ufw allow OpenSSH
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw --force enable
+$SUDO ufw allow OpenSSH
+$SUDO ufw allow 80/tcp
+$SUDO ufw allow 443/tcp
+$SUDO ufw --force enable
 
 echo "==> Creating application directory..."
-mkdir -p "$APP_DIR"
+$SUDO mkdir -p "$APP_DIR"
+$SUDO chown "$(id -u):$(id -g)" "$APP_DIR"
 
 if [ -n "$REPO_URL" ]; then
     echo "==> Cloning repository..."
