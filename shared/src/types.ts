@@ -45,27 +45,6 @@ export interface Task {
 
 export type TaskPriority = 1 | 2 | 3 | 4;
 
-export interface CreateTaskInput {
-  title: string;
-  description?: string;
-  categoryId?: string;
-  priority?: TaskPriority;
-  deadline?: string;
-  scheduledStart?: string;
-  scheduledEnd?: string;
-  recurrenceRule?: string;
-  imageUrl?: string;
-}
-
-export interface UpdateTaskInput extends Partial<CreateTaskInput> {
-  isCompleted?: boolean;
-}
-
-export interface ScheduleTaskInput {
-  scheduledStart: string;
-  scheduledEnd: string;
-}
-
 // ==================== EVENT ====================
 export interface Event {
   id: string;
@@ -85,19 +64,6 @@ export interface Event {
   originalEventId?: string;
   isRecurringInstance?: boolean;
 }
-
-export interface CreateEventInput {
-  title: string;
-  description?: string;
-  location?: string;
-  categoryId?: string;
-  startTime: string;
-  endTime: string;
-  isAllDay?: boolean;
-  recurrenceRule?: string;
-}
-
-export interface UpdateEventInput extends Partial<CreateEventInput> {}
 
 // ==================== CALENDAR ====================
 export interface CalendarItem {
