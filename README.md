@@ -1,4 +1,4 @@
-# My Life Manager
+# My Life Manager by Kamil Cessak
 
 Aplikacja do zarządzania czasem w stylu Time Blocking. Łączy listę zadań (Inbox) z kalendarzem, umożliwiając przeciąganie zadań na konkretne godziny.
 
