@@ -32,27 +32,27 @@ jobs:
             git pull origin main
 
             echo "==> Building containers..."
-            docker compose -f docker-compose.prod.yml --env-file .env.production build
+            sudo docker compose -f docker-compose.prod.yml --env-file .env.production build
 
             echo "==> Starting services..."
-            docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+            sudo docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 
             echo "==> Waiting for API to become healthy..."
             for i in $(seq 1 30); do
-              if docker compose -f docker-compose.prod.yml ps api --format '{{.Health}}' | grep -q healthy; then
+              if sudo docker compose -f docker-compose.prod.yml --env-file .env.production ps api --format '{{.Health}}' | grep -q healthy; then
                 echo "==> API is healthy!"
                 break
               fi
               if [ "$i" -eq 30 ]; then
                 echo "==> WARNING: API health check timed out"
-                docker compose -f docker-compose.prod.yml logs --tail=50 api
+                sudo docker compose -f docker-compose.prod.yml --env-file .env.production logs --tail=50 api
                 exit 1
               fi
               sleep 5
             done
 
             echo "==> Cleaning up old images..."
-            docker image prune -f
+            sudo docker image prune -f
 
             echo "==> Deploy complete!"
-            docker compose -f docker-compose.prod.yml ps
+            sudo docker compose -f docker-compose.prod.yml --env-file .env.production ps
