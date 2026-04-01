@@ -1,7 +1,20 @@
 import { useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, MoreHorizontal, Inbox, AlertTriangle, Sun, Sunrise, Calendar, CalendarDays, Check, Edit2, Trash2 } from 'lucide-react';
+import {
+  Plus,
+  MoreHorizontal,
+  Inbox,
+  AlertTriangle,
+  Sun,
+  Sunrise,
+  Calendar,
+  CalendarDays,
+  CalendarRange,
+  Check,
+  Edit2,
+  Trash2,
+} from 'lucide-react';
 import { tasksApi, categoriesApi } from '../lib/api';
 import { Task, Category } from '../types';
 import TaskCard from './TaskCard';
@@ -10,7 +23,16 @@ import EventModal from './EventModal';
 import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
 import { useEscapeToClose } from '../hooks/useEscapeToClose';
-import { isToday, isTomorrow, isPast, isThisWeek } from 'date-fns';
+import {
+  isToday,
+  isTomorrow,
+  addDays,
+  startOfDay,
+  startOfToday,
+  endOfDay,
+  isBefore,
+  isAfter,
+} from 'date-fns';
 
 interface TaskSection {
   id: string;
@@ -186,15 +208,19 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
     });
   }, [activeCategory]);
 
-  // Group tasks into sections
+  // Group tasks into sections (due date by calendar day; upcoming = 7 days after tomorrow)
   const sections = useMemo((): TaskSection[] => {
     const overdue: Task[] = [];
     const today: Task[] = [];
     const tomorrow: Task[] = [];
-    const thisWeek: Task[] = [];
+    const upcoming: Task[] = [];
     const later: Task[] = [];
     const noDeadline: Task[] = [];
     const completed: Task[] = [];
+
+    const todayStart = startOfToday();
+    const upcomingStart = startOfDay(addDays(todayStart, 2));
+    const upcomingEnd = endOfDay(addDays(todayStart, 8));
 
     tasks.forEach((task) => {
       if (task.isCompleted) {
@@ -207,16 +233,16 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
         return;
       }
 
-      const deadlineDate = new Date(task.deadline);
+      const d = startOfDay(new Date(task.deadline));
 
-      if (isToday(deadlineDate)) {
-        today.push(task);
-      } else if (isPast(deadlineDate)) {
+      if (isBefore(d, todayStart)) {
         overdue.push(task);
-      } else if (isTomorrow(deadlineDate)) {
+      } else if (isToday(d)) {
+        today.push(task);
+      } else if (isTomorrow(d)) {
         tomorrow.push(task);
-      } else if (isThisWeek(deadlineDate, { weekStartsOn: 1 })) {
-        thisWeek.push(task);
+      } else if (!isBefore(d, upcomingStart) && !isAfter(d, upcomingEnd)) {
+        upcoming.push(task);
       } else {
         later.push(task);
       }
@@ -254,13 +280,13 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
       });
     }
 
-    if (thisWeek.length > 0) {
+    if (upcoming.length > 0) {
       result.push({
-        id: 'this-week',
-        title: 'Ten tydzień',
-        icon: <Calendar className="w-4 h-4 text-blue-500" />,
-        tasks: thisWeek,
-        className: 'border-l-2 border-l-blue-500 pl-3',
+        id: 'upcoming',
+        title: 'Nadchodzące',
+        icon: <CalendarRange className="w-4 h-4 text-cyan-500" />,
+        tasks: upcoming,
+        className: 'border-l-2 border-l-cyan-500 pl-3',
       });
     }
 
@@ -270,7 +296,7 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
         title: 'Później',
         icon: <CalendarDays className="w-4 h-4 text-gray-400" />,
         tasks: later,
-        className: 'border-l-2 border-l-gray-300 pl-3',
+        className: 'border-l-2 border-l-gray-300 pl-3 dark:border-l-gray-600',
       });
     }
 
@@ -280,7 +306,7 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
         title: 'Bez terminu',
         icon: <Inbox className="w-4 h-4 text-gray-400" />,
         tasks: noDeadline,
-        className: 'border-l-2 border-l-gray-200 pl-3',
+        className: 'border-l-2 border-l-gray-200 pl-3 dark:border-l-gray-600',
       });
     }
 
@@ -485,6 +511,9 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
           task={editingTask}
           categories={categories}
           initialMode={editingTask ? 'view' : 'edit'}
+          onTaskUpdated={(patch) =>
+            setEditingTask((t) => (t && t.id === patch.id ? { ...t, ...patch } : t))
+          }
           onClose={handleCloseModal}
         />
       )}

@@ -5,11 +5,12 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin, { Draggable } from '@fullcalendar/interaction';
 import { EventClickArg, EventDropArg, DateSelectArg, EventContentArg } from '@fullcalendar/core';
-import { startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns';
+import { startOfMonth, endOfMonth, addMonths, subMonths, subDays, startOfDay, endOfDay } from 'date-fns';
 import { tasksApi, eventsApi, categoriesApi } from '../lib/api';
 import { Task, Event, CalendarItem, Category } from '../types';
 import EventModal from './EventModal';
 import TaskModal from './TaskModal';
+import SelectAddTypeModal, { CalendarSlotSelection } from './SelectAddTypeModal';
 import toast from 'react-hot-toast';
 import { CalendarCheck, CheckSquare } from 'lucide-react';
 
@@ -27,7 +28,9 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [selectedDateRange, setSelectedDateRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [selectedDateRange, setSelectedDateRange] = useState<CalendarSlotSelection | null>(null);
+  const [pendingSlotSelection, setPendingSlotSelection] = useState<CalendarSlotSelection | null>(null);
+  const [calendarTaskPrefill, setCalendarTaskPrefill] = useState<CalendarSlotSelection | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
@@ -343,16 +346,28 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
     event.remove(); // Remove the external event, it will be re-added from the query
   }, [scheduleTaskMutation]);
 
-  // Handle date select (create new event)
-  const handleDateSelect = useCallback((selectInfo: DateSelectArg) => {
-    setSelectedDateRange({
-      start: selectInfo.start,
-      end: selectInfo.end,
-    });
-    setSelectedEvent(null);
-    setIsEventModalOpen(true);
-    selectInfo.view.calendar.unselect();
+  const normalizeCalendarSelect = useCallback((selectInfo: DateSelectArg): CalendarSlotSelection => {
+    const { start, end, allDay } = selectInfo;
+    if (allDay) {
+      const lastInclusiveDay = subDays(selectInfo.end, 1);
+      return {
+        start: startOfDay(start),
+        end: endOfDay(lastInclusiveDay),
+        allDay: true,
+      };
+    }
+    const endAt = end ?? new Date(start.getTime() + 60 * 60 * 1000);
+    return { start, end: endAt, allDay: false };
   }, []);
+
+  // Handle date select — choose task vs event (drag & drop unchanged)
+  const handleDateSelect = useCallback(
+    (selectInfo: DateSelectArg) => {
+      setPendingSlotSelection(normalizeCalendarSelect(selectInfo));
+      selectInfo.view.calendar.unselect();
+    },
+    [normalizeCalendarSelect]
+  );
 
   // Handle event click
   const handleEventClick = useCallback((clickInfo: EventClickArg) => {
@@ -535,6 +550,25 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
       </div>
 
       {/* Event Modal */}
+      {pendingSlotSelection && (
+        <SelectAddTypeModal
+          selection={pendingSlotSelection}
+          onClose={() => setPendingSlotSelection(null)}
+          onChooseTask={(slot) => {
+            setPendingSlotSelection(null);
+            setSelectedTask(null);
+            setCalendarTaskPrefill(slot);
+            setIsTaskModalOpen(true);
+          }}
+          onChooseEvent={(slot) => {
+            setPendingSlotSelection(null);
+            setSelectedEvent(null);
+            setSelectedDateRange(slot);
+            setIsEventModalOpen(true);
+          }}
+        />
+      )}
+
       {isEventModalOpen && (
         <EventModal
           event={selectedEvent}
@@ -554,9 +588,14 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
           task={selectedTask}
           categories={categories}
           initialMode={selectedTask ? 'view' : 'edit'}
+          calendarSelectPrefill={calendarTaskPrefill}
+          onTaskUpdated={(patch) =>
+            setSelectedTask((t) => (t && t.id === patch.id ? { ...t, ...patch } : t))
+          }
           onClose={() => {
             setIsTaskModalOpen(false);
             setSelectedTask(null);
+            setCalendarTaskPrefill(null);
           }}
         />
       )}

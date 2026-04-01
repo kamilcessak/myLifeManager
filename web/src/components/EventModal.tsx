@@ -1,18 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useEscapeToClose } from '../hooks/useEscapeToClose';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, MapPin, Calendar, Repeat, Trash2, Edit2, ChevronDown } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import type { Event, Category, Attachment } from '../types';
 import axios from 'axios';
 import { eventsApi, categoriesApi, attachmentsApi } from '../lib/api';
 import AttachmentPanel from './AttachmentPanel';
 import ReminderPicker from './ReminderPicker';
 import toast from 'react-hot-toast';
-import { format } from 'date-fns';
+import { format, startOfDay, endOfDay, set as setDateParts } from 'date-fns';
+import { pl } from 'date-fns/locale';
+import DatePicker from './DatePicker';
+import TimePicker, { firstSlotAfter, optionMinutes } from './TimePicker';
 
 interface EventModalProps {
   event: Event | null;
-  initialDateRange: { start: Date; end: Date } | null;
+  initialDateRange: { start: Date; end: Date; allDay: boolean } | null;
   onClose: () => void;
   initialMode?: 'view' | 'edit';
 }
@@ -71,21 +75,163 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
       : initialDateRange
       ? format(initialDateRange.end, "yyyy-MM-dd'T'HH:mm")
       : format(new Date(Date.now() + 60 * 60 * 1000), "yyyy-MM-dd'T'HH:mm"),
-    isAllDay: event?.isAllDay || false,
+    isAllDay: event?.isAllDay ?? initialDateRange?.allDay ?? false,
     recurrenceRule: event?.recurrenceRule || '',
     reminderMinutes: event?.reminderMinutes ?? null,
   });
 
   const selectedCategory = categories.find((category) => category.id === formData.categoryId);
 
+  const applyStartDate = useCallback(
+    (d: Date | undefined) => {
+      if (!d || mode === 'view') {
+        return;
+      }
+      setFormData((prev) => {
+        if (prev.isAllDay) {
+          const s = startOfDay(d);
+          const endD = startOfDay(new Date(prev.endTime));
+          if (endD < s) {
+            return {
+              ...prev,
+              startTime: format(s, "yyyy-MM-dd'T'HH:mm"),
+              endTime: format(endOfDay(d), "yyyy-MM-dd'T'HH:mm"),
+            };
+          }
+          return {
+            ...prev,
+            startTime: format(s, "yyyy-MM-dd'T'HH:mm"),
+            endTime: format(endOfDay(new Date(prev.endTime)), "yyyy-MM-dd'T'HH:mm"),
+          };
+        }
+        const prevS = new Date(prev.startTime);
+        const merged = setDateParts(d, {
+          hours: prevS.getHours(),
+          minutes: prevS.getMinutes(),
+          seconds: 0,
+          milliseconds: 0,
+        });
+        let endMs = new Date(prev.endTime).getTime();
+        if (endMs <= merged.getTime()) {
+          endMs = merged.getTime() + 60 * 60 * 1000;
+        }
+        return {
+          ...prev,
+          startTime: format(merged, "yyyy-MM-dd'T'HH:mm"),
+          endTime: format(new Date(endMs), "yyyy-MM-dd'T'HH:mm"),
+        };
+      });
+    },
+    [mode]
+  );
+
+  const applyEndDate = useCallback(
+    (d: Date | undefined) => {
+      if (!d || mode === 'view') {
+        return;
+      }
+      setFormData((prev) => {
+        if (prev.isAllDay) {
+          const e = endOfDay(d);
+          const startD = startOfDay(new Date(prev.startTime));
+          if (startOfDay(d) < startD) {
+            return {
+              ...prev,
+              startTime: format(startOfDay(d), "yyyy-MM-dd'T'HH:mm"),
+              endTime: format(e, "yyyy-MM-dd'T'HH:mm"),
+            };
+          }
+          return {
+            ...prev,
+            endTime: format(e, "yyyy-MM-dd'T'HH:mm"),
+          };
+        }
+        const prevE = new Date(prev.endTime);
+        const merged = setDateParts(d, {
+          hours: prevE.getHours(),
+          minutes: prevE.getMinutes(),
+          seconds: 0,
+          milliseconds: 0,
+        });
+        const startMs = new Date(prev.startTime).getTime();
+        if (merged.getTime() <= startMs) {
+          return {
+            ...prev,
+            endTime: format(new Date(startMs + 60 * 60 * 1000), "yyyy-MM-dd'T'HH:mm"),
+          };
+        }
+        return {
+          ...prev,
+          endTime: format(merged, "yyyy-MM-dd'T'HH:mm"),
+        };
+      });
+    },
+    [mode]
+  );
+
+  const applyStartTime = useCallback((hm: string) => {
+    const [h, m] = hm.split(':').map((x) => parseInt(x, 10));
+    setFormData((prev) => {
+      if (prev.isAllDay) {
+        return prev;
+      }
+      const prevStart = new Date(prev.startTime);
+      const prevEnd = new Date(prev.endTime);
+      let durationMs = prevEnd.getTime() - prevStart.getTime();
+      if (!Number.isFinite(durationMs) || durationMs <= 0) {
+        durationMs = 60 * 60 * 1000;
+      }
+      const nextStart = setDateParts(prevStart, {
+        hours: Number.isFinite(h) ? h : 0,
+        minutes: Number.isFinite(m) ? m : 0,
+        seconds: 0,
+        milliseconds: 0,
+      });
+      const nextEnd = new Date(nextStart.getTime() + durationMs);
+      return {
+        ...prev,
+        startTime: format(nextStart, "yyyy-MM-dd'T'HH:mm"),
+        endTime: format(nextEnd, "yyyy-MM-dd'T'HH:mm"),
+      };
+    });
+  }, []);
+
+  const applyEndTime = useCallback((hm: string) => {
+    const [h, m] = hm.split(':').map((x) => parseInt(x, 10));
+    setFormData((prev) => {
+      if (prev.isAllDay) {
+        return prev;
+      }
+      const base = new Date(prev.endTime);
+      const nextEnd = setDateParts(base, {
+        hours: Number.isFinite(h) ? h : 0,
+        minutes: Number.isFinite(m) ? m : 0,
+        seconds: 0,
+        milliseconds: 0,
+      });
+      const startMs = new Date(prev.startTime).getTime();
+      if (nextEnd.getTime() <= startMs) {
+        const adjusted = new Date(startMs + 15 * 60 * 1000);
+        return {
+          ...prev,
+          endTime: format(adjusted, "yyyy-MM-dd'T'HH:mm"),
+        };
+      }
+      return { ...prev, endTime: format(nextEnd, "yyyy-MM-dd'T'HH:mm") };
+    });
+  }, []);
+
   const createMutation = useMutation({
     mutationFn: (vars: { data: typeof formData; queuedFiles: File[] }) => {
       const { data } = vars;
       return eventsApi.create({
-        ...data,
+        title: data.title,
+        description: data.description,
+        location: data.location,
+        categoryId: data.categoryId || undefined,
         startTime: new Date(data.startTime).toISOString(),
         endTime: new Date(data.endTime).toISOString(),
-        categoryId: data.categoryId || undefined,
+        isAllDay: data.isAllDay,
         recurrenceRule: data.recurrenceRule || undefined,
         reminderMinutes: data.reminderMinutes,
       });
@@ -142,10 +288,13 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
   const updateMutation = useMutation({
     mutationFn: (data: typeof formData) =>
       eventsApi.update(event!.originalEventId || event!.id, {
-        ...data,
+        title: data.title,
+        description: data.description,
+        location: data.location,
+        categoryId: data.categoryId || undefined,
         startTime: new Date(data.startTime).toISOString(),
         endTime: new Date(data.endTime).toISOString(),
-        categoryId: data.categoryId || undefined,
+        isAllDay: data.isAllDay,
         recurrenceRule: data.recurrenceRule || undefined,
         reminderMinutes: data.reminderMinutes,
       }),
@@ -189,6 +338,17 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
       createMutation.mutate({ data: formData, queuedFiles: pendingFiles });
     }
   };
+
+  const eventStartForRange = new Date(formData.startTime);
+  const eventEndForRange = new Date(formData.endTime);
+  const eventSameCalendarDay =
+    startOfDay(eventStartForRange).getTime() === startOfDay(eventEndForRange).getTime();
+  const eventStartMins = eventStartForRange.getHours() * 60 + eventStartForRange.getMinutes();
+  const eventSlotAfterStart = firstSlotAfter(eventStartMins);
+  const eventEndTimeMinMinutes =
+    !formData.isAllDay && eventSameCalendarDay && eventSlotAfterStart
+      ? optionMinutes(eventSlotAfterStart)
+      : undefined;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -337,72 +497,155 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
 
           {/* All Day */}
           <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
+            <Checkbox
               id="isAllDay"
               checked={formData.isAllDay}
-              onChange={(e) => setFormData({ ...formData, isAllDay: e.target.checked })}
-              className="event-modal-checkbox w-4 h-4 rounded border-gray-400 text-blue-600 focus:ring-blue-500 dark:border-gray-500 dark:text-blue-400"
+              onCheckedChange={(checked) => {
+                const isOn = checked === true;
+                setFormData((prev) => {
+                  if (isOn) {
+                    const s = startOfDay(new Date(prev.startTime));
+                    const en = endOfDay(new Date(prev.endTime));
+                    return {
+                      ...prev,
+                      isAllDay: true,
+                      startTime: format(s, "yyyy-MM-dd'T'HH:mm"),
+                      endTime: format(en, "yyyy-MM-dd'T'HH:mm"),
+                    };
+                  }
+                  const s = new Date(prev.startTime);
+                  const en = new Date(prev.endTime);
+                  return {
+                    ...prev,
+                    isAllDay: false,
+                    startTime: format(
+                      setDateParts(s, { hours: 9, minutes: 0, seconds: 0, milliseconds: 0 }),
+                      "yyyy-MM-dd'T'HH:mm"
+                    ),
+                    endTime: format(
+                      setDateParts(en, { hours: 10, minutes: 0, seconds: 0, milliseconds: 0 }),
+                      "yyyy-MM-dd'T'HH:mm"
+                    ),
+                  };
+                });
+              }}
               disabled={mode === 'view'}
+              className="border border-gray-400 dark:border-gray-600"
             />
             <label
               htmlFor="isAllDay"
-              className="event-modal-label text-sm font-medium text-gray-800 dark:text-gray-300"
+              className="event-modal-label cursor-pointer text-sm font-medium text-gray-800 dark:text-gray-300"
             >
               Wydarzenie całodniowe
             </label>
           </div>
 
           {/* Date & Time */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-3">
             <div>
-              <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
-                <span className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 shrink-0" />
-                  Rozpoczęcie
-                </span>
-              </label>
-              <input
-                type={formData.isAllDay ? 'date' : 'datetime-local'}
-                value={
-                  formData.isAllDay
-                    ? formData.startTime.split('T')[0]
-                    : formData.startTime
-                }
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    startTime: formData.isAllDay
-                      ? `${e.target.value}T00:00`
-                      : e.target.value,
-                  })
-                }
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                disabled={mode === 'view'}
-              />
-            </div>
-            <div>
-              <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
-                Zakończenie
-              </label>
-              <input
-                type={formData.isAllDay ? 'date' : 'datetime-local'}
-                value={
-                  formData.isAllDay
-                    ? formData.endTime.split('T')[0]
-                    : formData.endTime
-                }
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    endTime: formData.isAllDay
-                      ? `${e.target.value}T23:59`
-                      : e.target.value,
-                  })
-                }
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                disabled={mode === 'view'}
-              />
+              <span className="event-modal-label mb-2 flex items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-300">
+                <Calendar className="h-4 w-4 shrink-0" />
+                {formData.isAllDay ? 'Daty (cały dzień)' : 'Data i godzina'}
+              </span>
+              {mode === 'view' ? (
+                <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-8 sm:gap-y-2">
+                    <p>
+                      <span className="font-medium text-gray-500 dark:text-gray-400">Od: </span>
+                      {format(new Date(formData.startTime), 'PPP', { locale: pl })}
+                      {!formData.isAllDay && `, ${format(new Date(formData.startTime), 'HH:mm')}`}
+                    </p>
+                    <p>
+                      <span className="font-medium text-gray-500 dark:text-gray-400">Do: </span>
+                      {format(new Date(formData.endTime), 'PPP', { locale: pl })}
+                      {!formData.isAllDay && `, ${format(new Date(formData.endTime), 'HH:mm')}`}
+                    </p>
+                  </div>
+                </div>
+              ) : formData.isAllDay ? (
+                <div className="flex flex-col gap-4 mt-3">
+                  <div className="w-full">
+                    <label
+                      htmlFor="event-all-day-start"
+                      className="mb-1.5 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400"
+                    >
+                      Początek
+                    </label>
+                    <DatePicker
+                      id="event-all-day-start"
+                      className="w-full"
+                      value={startOfDay(new Date(formData.startTime))}
+                      onChange={applyStartDate}
+                    />
+                  </div>
+                  <div className="w-full">
+                    <label
+                      htmlFor="event-all-day-end"
+                      className="mb-1.5 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400"
+                    >
+                      Koniec
+                    </label>
+                    <DatePicker
+                      id="event-all-day-end"
+                      className="w-full"
+                      value={startOfDay(new Date(formData.endTime))}
+                      onChange={applyEndDate}
+                      disabledDays={{ before: startOfDay(new Date(formData.startTime)) }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="flex flex-col gap-4 mt-3"
+                  role="group"
+                  aria-label="Data i godzina: początek i koniec"
+                >
+                  <div className="w-full">
+                    <label
+                      htmlFor="event-range-start-date"
+                      className="mb-1.5 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400"
+                    >
+                      Początek
+                    </label>
+                    <div className="flex w-full gap-2">
+                      <DatePicker
+                        id="event-range-start-date"
+                        className="min-w-0 flex-1 text-left"
+                        value={startOfDay(eventStartForRange)}
+                        onChange={applyStartDate}
+                      />
+                      <TimePicker
+                        className="w-[110px] shrink-0"
+                        value={format(eventStartForRange, 'HH:mm')}
+                        onChange={applyStartTime}
+                      />
+                    </div>
+                  </div>
+                  <div className="w-full">
+                    <label
+                      htmlFor="event-range-end-date"
+                      className="mb-1.5 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400"
+                    >
+                      Koniec
+                    </label>
+                    <div className="flex w-full gap-2">
+                      <DatePicker
+                        id="event-range-end-date"
+                        className="min-w-0 flex-1 text-left"
+                        value={startOfDay(eventEndForRange)}
+                        onChange={applyEndDate}
+                        disabledDays={{ before: startOfDay(eventStartForRange) }}
+                      />
+                      <TimePicker
+                        className="w-[110px] shrink-0"
+                        value={format(eventEndForRange, 'HH:mm')}
+                        onChange={applyEndTime}
+                        minMinutes={eventEndTimeMinMinutes}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

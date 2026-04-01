@@ -304,6 +304,9 @@ export default function SearchBar() {
           task={selectedTask}
           categories={categories}
           initialMode="view"
+          onTaskUpdated={(patch) =>
+            setSelectedTask((t) => (t && t.id === patch.id ? { ...t, ...patch } : t))
+          }
           onClose={() => {
             setIsTaskModalOpen(false);
             setSelectedTask(null);
