@@ -350,11 +350,49 @@ html.dark .fc .fc-daygrid-more-link {
   min-width: 0;
 }
 
+/* Month + week: time on first row, title below (up to 3 lines, then ellipsis) */
+.fc-dayGridMonth-view .fc-item-content,
+.fc-timeGridWeek-view .fc-item-content {
+  align-items: flex-start;
+}
+
+.fc-dayGridMonth-view .fc-item-text,
+.fc-timeGridWeek-view .fc-item-text {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.fc-dayGridMonth-view .fc-item-time,
+.fc-timeGridWeek-view .fc-item-time {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.fc-dayGridMonth-view .fc-item-title,
+.fc-timeGridWeek-view .fc-item-title {
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  word-break: break-word;
+}
+
 .fc-item-time,
 .fc-item-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Day view keeps single-line time + title in one row */
+.fc-timeGridDay-view .fc-item-title {
+  white-space: nowrap;
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
 }
 
 /* Drag & Drop styles */
