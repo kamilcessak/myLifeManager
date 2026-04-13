@@ -543,7 +543,7 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
           allDayText="Cały dzień"
           noEventsText="Brak wydarzeń"
           dayMaxEvents={MONTH_DAY_EVENT_LIMIT}
-          moreLinkContent={(count) => `Zobacz więcej (+${count})`}
+          moreLinkContent={(arg) => `Zobacz więcej (+${arg.num})`}
           moreLinkHint={(count) => `Zobacz ${count} dodatkowych pozycji`}
           moreLinkClick={handleMoreLinkClick}
         />
