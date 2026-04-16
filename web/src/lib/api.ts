@@ -114,10 +114,33 @@ export const teamsApi = {
   create: (data: { name: string }) =>
     api.post<{ status: string; data: { team: Team } }>("/teams", data),
 
+  update: (teamId: string, data: { name: string }) =>
+    api.patch<{ status: string; data: { team: Team } }>(
+      `/teams/${teamId}`,
+      data,
+    ),
+
+  delete: (teamId: string) =>
+    api.delete<{ status: string; data: { teamId: string } }>(
+      `/teams/${teamId}`,
+    ),
+
   getMembers: (teamId: string) =>
     api.get<{ status: string; data: { members: TeamMemberApiRow[] } }>(
       `/teams/${teamId}/members`,
     ),
+
+  updateMemberRole: (teamId: string, userId: string, role: TeamRole) =>
+    api.patch<{ status: string; data: { member: TeamMemberApiRow } }>(
+      `/teams/${teamId}/members/${userId}`,
+      { role },
+    ),
+
+  removeMember: (teamId: string, targetUserId: string) =>
+    api.delete<{
+      status: string;
+      data: { teamId: string; userId: string; left: boolean };
+    }>(`/teams/${teamId}/members/${targetUserId}`),
 
   inviteMembers: (teamId: string, emails: string[]) =>
     api.post<{ status: string; data: { invitations: TeamInvitation[] } }>(

@@ -1,55 +1,41 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, Loader2, Copy, Check } from 'lucide-react';
-import type { TeamInvitation } from 'shared';
+import { Mail, Settings, Users, X } from 'lucide-react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
-import {
-  useInviteMembersMutation,
-  useTeamMembers,
-  useTeams,
-  type TeamListItem,
-} from '../../hooks/useTeams';
+import { useTeams, type TeamListItem } from '../../hooks/useTeams';
 import { useWorkspaceStore } from '../../store/useWorkspaceStore';
-import { Button } from '@/components/ui/button';
-import toast from 'react-hot-toast';
-import { getApiErrorMessage } from '@/lib/apiErrors';
+import TeamMembersTab from './TeamMembersTab';
+import TeamInvitesTab from './TeamInvitesTab';
+import TeamSettingsTab from './TeamSettingsTab';
 
-function parseEmails(raw: string): string[] {
-  const parts = raw.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const p of parts) {
-    const k = p.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(p);
-  }
-  return out;
+type TabId = 'members' | 'invites' | 'settings';
+
+interface TabDescriptor {
+  id: TabId;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  ownerOnly?: boolean;
 }
 
-function roleLabel(role: string): string {
-  if (role === 'OWNER') return 'Właściciel';
-  if (role === 'MEMBER') return 'Członek';
-  return role;
-}
+const ALL_TABS: TabDescriptor[] = [
+  { id: 'members', label: 'Członkowie', icon: Users },
+  { id: 'invites', label: 'Zaproszenia', icon: Mail, ownerOnly: true },
+  { id: 'settings', label: 'Ustawienia', icon: Settings, ownerOnly: true },
+];
 
 interface TeamManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTab?: TabId;
 }
 
-export default function TeamManagerModal({ isOpen, onClose }: TeamManagerModalProps) {
+export default function TeamManagerModal({
+  isOpen,
+  onClose,
+  initialTab = 'members',
+}: TeamManagerModalProps) {
   useEscapeToClose(onClose, isOpen);
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const { data: teams } = useTeams();
-  const { data: members, isLoading: membersLoading, isError: membersError } = useTeamMembers(
-    isOpen ? activeWorkspaceId : null,
-  );
-  const inviteMutation = useInviteMembersMutation();
-
-  const [emailsText, setEmailsText] = useState('');
-  const [inviteError, setInviteError] = useState<string | null>(null);
-  const [generatedInvites, setGeneratedInvites] = useState<TeamInvitation[] | null>(null);
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   const activeTeam: TeamListItem | undefined = useMemo(
     () => teams?.find((t) => t.id === activeWorkspaceId),
@@ -57,14 +43,23 @@ export default function TeamManagerModal({ isOpen, onClose }: TeamManagerModalPr
   );
   const isOwner = activeTeam?.myRole === 'OWNER';
 
+  const visibleTabs = useMemo(
+    () => ALL_TABS.filter((t) => !t.ownerOnly || isOwner),
+    [isOwner],
+  );
+
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+
   useEffect(() => {
-    if (!isOpen) {
-      setEmailsText('');
-      setInviteError(null);
-      setGeneratedInvites(null);
-      setCopiedCode(null);
+    if (isOpen) setActiveTab(initialTab);
+  }, [isOpen, initialTab]);
+
+  // If the currently selected tab becomes hidden (e.g. role changed), fall back to members.
+  useEffect(() => {
+    if (!visibleTabs.some((t) => t.id === activeTab)) {
+      setActiveTab('members');
     }
-  }, [isOpen]);
+  }, [visibleTabs, activeTab]);
 
   useEffect(() => {
     if (isOpen && !activeWorkspaceId) {
@@ -72,54 +67,21 @@ export default function TeamManagerModal({ isOpen, onClose }: TeamManagerModalPr
     }
   }, [isOpen, activeWorkspaceId, onClose]);
 
-  const handleInvite = () => {
-    if (!activeWorkspaceId) return;
-    const emails = parseEmails(emailsText);
-    if (emails.length === 0) {
-      setInviteError('Podaj co najmniej jeden adres e-mail.');
-      return;
-    }
-    setInviteError(null);
-    inviteMutation.mutate(
-      { teamId: activeWorkspaceId, emails },
-      {
-        onSuccess: (invitations) => {
-          setGeneratedInvites(invitations);
-          toast.success('Zaproszenia wygenerowane');
-        },
-        onError: (err) => {
-          setInviteError(getApiErrorMessage(err));
-        },
-      },
-    );
-  };
-
-  const copyCode = async (code: string) => {
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopiedCode(code);
-      toast.success('Skopiowano kod');
-      window.setTimeout(() => setCopiedCode((c) => (c === code ? null : c)), 2000);
-    } catch {
-      toast.error('Nie udało się skopiować do schowka');
-    }
-  };
-
-  if (!isOpen || !activeWorkspaceId) {
-    return null;
-  }
+  if (!isOpen || !activeWorkspaceId) return null;
 
   return (
     <div className="modal-overlay z-[60]" onClick={onClose}>
       <div
-        className="modal-content max-w-lg animate-fade-in"
+        className="modal-content max-w-xl animate-fade-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-[var(--app-border)] px-5 py-4">
-          <div>
+          <div className="min-w-0">
             <h2 className="text-lg font-semibold text-[var(--app-text)]">Zarządzaj zespołem</h2>
             {activeTeam ? (
-              <p className="mt-0.5 text-sm text-[var(--app-text-muted)]">{activeTeam.name}</p>
+              <p className="mt-0.5 truncate text-sm text-[var(--app-text-muted)]">
+                {activeTeam.name}
+              </p>
             ) : null}
           </div>
           <button
@@ -132,117 +94,76 @@ export default function TeamManagerModal({ isOpen, onClose }: TeamManagerModalPr
           </button>
         </div>
 
-        <div className="max-h-[min(70vh,520px)] overflow-y-auto px-5 py-4">
-          <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-[var(--app-text)]">Członkowie</h3>
-            {membersLoading ? (
-              <div className="flex items-center gap-2 text-sm text-[var(--app-text-muted)]">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Ładowanie listy…
-              </div>
-            ) : membersError ? (
-              <p className="text-sm text-red-600 dark:text-red-400">Nie udało się wczytać członków</p>
-            ) : members && members.length > 0 ? (
-              <ul className="divide-y divide-[var(--app-border)] rounded-lg border border-[var(--app-border)]">
-                {members.map((m) => (
-                  <li
-                    key={m.id}
-                    className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-[var(--app-text)]">
-                        {m.user.name?.trim() || m.user.email}
-                      </p>
-                      {m.user.name?.trim() ? (
-                        <p className="truncate text-xs text-[var(--app-text-muted)]">{m.user.email}</p>
-                      ) : null}
-                    </div>
-                    <span className="shrink-0 rounded-md bg-[var(--app-surface-muted)] px-2 py-0.5 text-xs font-medium text-[var(--app-text)]">
-                      {roleLabel(m.role)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-[var(--app-text-muted)]">Brak członków do wyświetlenia.</p>
-            )}
-          </section>
-
-          {isOwner ? (
-            <section className="mt-8 space-y-3 border-t border-[var(--app-border)] pt-6">
-              <h3 className="text-sm font-semibold text-[var(--app-text)]">Zapraszanie</h3>
-              <p className="text-xs text-[var(--app-text-muted)]">
-                Wpisz adresy e-mail (oddzielone przecinkiem, średnikiem lub nową linią). Dla każdego
-                adresu powstanie unikalny kod zaproszenia.
-              </p>
-              <textarea
-                value={emailsText}
-                onChange={(e) => setEmailsText(e.target.value)}
-                rows={4}
-                placeholder="anna@example.com, jan@example.com"
-                className="w-full resize-y rounded-lg border border-[var(--app-border)] px-3 py-2 text-sm outline-none ring-blue-500/30 focus:border-blue-500 focus:ring-2"
-              />
-              {inviteError ? (
-                <p className="text-sm text-red-600 dark:text-red-400">{inviteError}</p>
-              ) : null}
-              <Button
+        <div
+          role="tablist"
+          aria-label="Sekcje zarządzania zespołem"
+          className="flex gap-1 border-b border-[var(--app-border)] bg-[var(--app-surface)] px-3 pt-2"
+        >
+          {visibleTabs.map(({ id, label, icon: Icon }) => {
+            const isActive = activeTab === id;
+            return (
+              <button
+                key={id}
+                role="tab"
                 type="button"
-                onClick={handleInvite}
-                disabled={inviteMutation.isPending}
-                className="w-full sm:w-auto"
+                id={`team-tab-${id}`}
+                aria-selected={isActive}
+                aria-controls={`team-tabpanel-${id}`}
+                onClick={() => setActiveTab(id)}
+                className={`flex items-center gap-2 rounded-t-md border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'border-blue-500 text-[var(--app-text)]'
+                    : 'border-transparent text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+                }`}
               >
-                {inviteMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generowanie…
-                  </>
-                ) : (
-                  'Wygeneruj zaproszenia'
-                )}
-              </Button>
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            );
+          })}
+        </div>
 
-              {generatedInvites && generatedInvites.length > 0 ? (
-                <div className="mt-4 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/50 p-3">
-                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
-                    Wygenerowane kody
-                  </p>
-                  <ul className="space-y-2">
-                    {generatedInvites.map((inv) => (
-                      <li
-                        key={inv.id}
-                        className="flex flex-col gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] p-2 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="min-w-0 text-sm">
-                          <p className="truncate text-[var(--app-text-muted)]">{inv.email}</p>
-                          <p className="font-mono text-sm font-medium tracking-wide text-[var(--app-text)]">
-                            {inv.code}
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="shrink-0"
-                          onClick={() => void copyCode(inv.code)}
-                        >
-                          {copiedCode === inv.code ? (
-                            <Check className="mr-1 h-3.5 w-3.5 text-green-600" />
-                          ) : (
-                            <Copy className="mr-1 h-3.5 w-3.5" />
-                          )}
-                          Skopiuj kod
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </section>
-          ) : (
-            <p className="mt-6 border-t border-[var(--app-border)] pt-6 text-sm text-[var(--app-text-muted)]">
-              Tylko właściciel zespołu może generować zaproszenia.
-            </p>
-          )}
+        <div className="max-h-[min(70vh,560px)] overflow-y-auto px-5 py-5">
+          <div
+            role="tabpanel"
+            id="team-tabpanel-members"
+            aria-labelledby="team-tab-members"
+            hidden={activeTab !== 'members'}
+          >
+            {activeTab === 'members' ? (
+              <TeamMembersTab
+                teamId={activeWorkspaceId}
+                isOwner={isOwner}
+                onLeaveTeam={onClose}
+              />
+            ) : null}
+          </div>
+
+          <div
+            role="tabpanel"
+            id="team-tabpanel-invites"
+            aria-labelledby="team-tab-invites"
+            hidden={activeTab !== 'invites'}
+          >
+            {activeTab === 'invites' ? (
+              <TeamInvitesTab teamId={activeWorkspaceId} isOwner={isOwner} />
+            ) : null}
+          </div>
+
+          <div
+            role="tabpanel"
+            id="team-tabpanel-settings"
+            aria-labelledby="team-tab-settings"
+            hidden={activeTab !== 'settings'}
+          >
+            {activeTab === 'settings' && activeTeam ? (
+              <TeamSettingsTab
+                team={activeTeam}
+                isOwner={isOwner}
+                onDeleted={onClose}
+              />
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

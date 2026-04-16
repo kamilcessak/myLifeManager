@@ -5,7 +5,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import type { Team, TeamInvitation } from 'shared';
+import type { Team, TeamInvitation, TeamRole } from 'shared';
 import { api, teamsApi, type TeamMemberApiRow } from '../lib/api';
 
 /** Team list item returned by GET /api/teams (membership metadata from API). */
@@ -113,6 +113,77 @@ export function useCreateTeamMutation(): UseMutationResult<
       return parseCreatedTeamFromResponseBody(response.data);
     },
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: TEAMS_QUERY_KEY });
+    },
+  });
+}
+
+export function useUpdateTeamMutation(): UseMutationResult<
+  Team,
+  Error,
+  { teamId: string; name: string }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ teamId, name }) => {
+      const response = await teamsApi.update(teamId, { name });
+      return response.data.data.team;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: TEAMS_QUERY_KEY });
+    },
+  });
+}
+
+export function useDeleteTeamMutation(): UseMutationResult<
+  { teamId: string },
+  Error,
+  { teamId: string }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ teamId }) => {
+      const response = await teamsApi.delete(teamId);
+      return response.data.data;
+    },
+    onSuccess: (_data, { teamId }) => {
+      void queryClient.invalidateQueries({ queryKey: TEAMS_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: ['teamMembers', teamId] });
+    },
+  });
+}
+
+export function useUpdateMemberRoleMutation(): UseMutationResult<
+  TeamMemberApiRow,
+  Error,
+  { teamId: string; userId: string; role: TeamRole }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ teamId, userId, role }) => {
+      const response = await teamsApi.updateMemberRole(teamId, userId, role);
+      return response.data.data.member;
+    },
+    onSuccess: (_data, { teamId }) => {
+      void queryClient.invalidateQueries({ queryKey: ['teamMembers', teamId] });
+      void queryClient.invalidateQueries({ queryKey: TEAMS_QUERY_KEY });
+    },
+  });
+}
+
+export function useRemoveMemberMutation(): UseMutationResult<
+  { teamId: string; userId: string; left: boolean },
+  Error,
+  { teamId: string; targetUserId: string }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ teamId, targetUserId }) => {
+      const response = await teamsApi.removeMember(teamId, targetUserId);
+      return response.data.data;
+    },
+    onSuccess: (_data, { teamId }) => {
+      void queryClient.invalidateQueries({ queryKey: ['teamMembers', teamId] });
       void queryClient.invalidateQueries({ queryKey: TEAMS_QUERY_KEY });
     },
   });

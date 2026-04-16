@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import { InvitationStatus } from '@prisma/client';
 import { prisma } from '../config/database.js';
 import { webpush } from '../config/webpush.js';
 
@@ -153,4 +154,37 @@ export function startReminderCron() {
   });
 
   console.log('⏰ Reminder cron started (every minute).');
+}
+
+/**
+ * Removes expired PENDING invitations from the database.
+ * Expired ACCEPTED invitations are preserved as a historical trail.
+ */
+async function cleanupExpiredInvitations(): Promise<void> {
+  const result = await prisma.teamInvitation.deleteMany({
+    where: {
+      status: InvitationStatus.PENDING,
+      expiresAt: { lt: new Date() },
+    },
+  });
+
+  if (result.count > 0) {
+    console.log(`🧹 Cleaned up ${result.count} expired team invitation(s).`);
+  }
+}
+
+export function startInvitationCleanupCron() {
+  // Run once daily at midnight server time.
+  cron.schedule('0 0 * * *', () => {
+    cleanupExpiredInvitations().catch((err) => {
+      console.error('❌ Invitation cleanup cron error:', err);
+    });
+  });
+
+  // Also run once on startup so we don't carry stale rows between deploys.
+  cleanupExpiredInvitations().catch((err) => {
+    console.error('❌ Invitation cleanup (startup) error:', err);
+  });
+
+  console.log('🧹 Invitation cleanup cron started (daily at 00:00).');
 }

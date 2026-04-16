@@ -118,6 +118,20 @@ export const createTeamSchema = z.object({
   name: z.string().min(1, 'Nazwa zespołu jest wymagana'),
 });
 
+export const updateTeamSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, 'Nazwa zespołu musi mieć co najmniej 2 znaki')
+    .max(100, 'Nazwa zespołu może mieć max 100 znaków'),
+});
+
+export const updateMemberRoleSchema = z.object({
+  role: z.enum(['OWNER', 'MEMBER'], {
+    errorMap: () => ({ message: 'Nieprawidłowa rola (OWNER | MEMBER)' }),
+  }),
+});
+
 export const inviteMembersSchema = z.object({
   emails: z.array(z.string().email('Nieprawidłowy format email')),
 });
@@ -161,6 +175,8 @@ export type DateRangeQuery = z.infer<typeof dateRangeQuerySchema>;
 export type TaskQuery = z.infer<typeof taskQuerySchema>;
 export type GetCategoriesQuery = z.infer<typeof getCategoriesQuerySchema>;
 export type CreateTeamInput = z.infer<typeof createTeamSchema>;
+export type UpdateTeamInput = z.infer<typeof updateTeamSchema>;
+export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleSchema>;
 export type InviteMembersInput = z.infer<typeof inviteMembersSchema>;
 export type JoinTeamInput = z.infer<typeof joinTeamSchema>;
 export type SearchQuery = z.infer<typeof searchQuerySchema>;

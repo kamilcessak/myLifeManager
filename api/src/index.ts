@@ -15,7 +15,7 @@ import attachmentsRoutes from "./routes/attachments.js";
 import searchRoutes from "./routes/search.js";
 import notificationsRoutes from "./routes/notifications.js";
 import teamsRoutes from "./routes/teams.js";
-import { startReminderCron } from "./cron/reminders.js";
+import { startInvitationCleanupCron, startReminderCron } from "./cron/reminders.js";
 
 // Load environment variables
 dotenv.config();
@@ -66,6 +66,7 @@ app.listen(PORT, () => {
   console.log(`📚 API docs: http://localhost:${PORT}/api/health`);
 
   startReminderCron();
+  startInvitationCleanupCron();
 });
 
 export default app;

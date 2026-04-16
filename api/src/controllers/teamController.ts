@@ -11,6 +11,30 @@ function generateInviteCode(): string {
   return randomBytes(4).toString('hex');
 }
 
+/**
+ * Ensures the calling user is an OWNER of the given team.
+ * Throws 403 otherwise (or 403 via verifyTeamAccess if not a member at all).
+ */
+async function requireOwner(userId: string, teamId: string): Promise<void> {
+  const membership = await prisma.teamMember.findUnique({
+    where: { teamId_userId: { teamId, userId } },
+  });
+
+  if (!membership) {
+    throw new ApiError('Brak dostępu do zespołu', 403);
+  }
+
+  if (membership.role !== TeamRole.OWNER) {
+    throw new ApiError('Wymagana rola właściciela zespołu', 403);
+  }
+}
+
+async function countTeamOwners(teamId: string): Promise<number> {
+  return prisma.teamMember.count({
+    where: { teamId, role: TeamRole.OWNER },
+  });
+}
+
 export async function createTeam(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { name } = req.body as { name: string };
@@ -107,15 +131,7 @@ export async function inviteMembers(req: Request, res: Response, next: NextFunct
     const { emails } = req.body as { emails: string[] };
     const userId = req.user!.id;
 
-    const membership = await prisma.teamMember.findUnique({
-      where: {
-        teamId_userId: { teamId, userId },
-      },
-    });
-
-    if (!membership || membership.role !== TeamRole.OWNER) {
-      throw new ApiError('Tylko właściciel zespołu może wysyłać zaproszenia', 403);
-    }
+    await requireOwner(userId, teamId);
 
     const uniqueEmails: string[] = [];
     const seen = new Set<string>();
@@ -167,6 +183,175 @@ export async function inviteMembers(req: Request, res: Response, next: NextFunct
     res.status(201).json({
       status: 'success',
       data: { invitations },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateTeam(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const teamId = req.params.id;
+    const userId = req.user!.id;
+    const { name } = req.body as { name: string };
+
+    await requireOwner(userId, teamId);
+
+    const team = await prisma.team.update({
+      where: { id: teamId },
+      data: { name: name.trim() },
+    });
+
+    res.json({
+      status: 'success',
+      data: { team },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteTeam(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const teamId = req.params.id;
+    const userId = req.user!.id;
+
+    await requireOwner(userId, teamId);
+
+    await prisma.team.delete({ where: { id: teamId } });
+
+    res.json({
+      status: 'success',
+      data: { teamId },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateMemberRole(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const teamId = req.params.id;
+    const targetUserId = req.params.userId;
+    const actingUserId = req.user!.id;
+    const { role } = req.body as { role: TeamRole };
+
+    await requireOwner(actingUserId, teamId);
+
+    const targetMember = await prisma.teamMember.findUnique({
+      where: { teamId_userId: { teamId, userId: targetUserId } },
+    });
+
+    if (!targetMember) {
+      throw new ApiError('Wskazany użytkownik nie należy do zespołu', 404);
+    }
+
+    if (targetMember.role === role) {
+      res.json({
+        status: 'success',
+        data: { member: targetMember },
+      });
+      return;
+    }
+
+    // Edge case: do not allow demoting the last OWNER to MEMBER.
+    if (targetMember.role === TeamRole.OWNER && role === TeamRole.MEMBER) {
+      const ownerCount = await countTeamOwners(teamId);
+      if (ownerCount <= 1) {
+        throw new ApiError(
+          'Nie możesz zmienić swojej roli — jesteś jedynym właścicielem zespołu. Przekaż własność komuś innemu.',
+          400,
+        );
+      }
+    }
+
+    const updated = await prisma.teamMember.update({
+      where: { teamId_userId: { teamId, userId: targetUserId } },
+      data: { role },
+      include: {
+        user: {
+          select: { id: true, email: true, name: true, avatarUrl: true },
+        },
+      },
+    });
+
+    res.json({
+      status: 'success',
+      data: { member: updated },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Handles both "kick" (owner removes another member) and "leave" (user removes themselves).
+ * Blocks the operation if the leaving/kicked member is the last OWNER of the team.
+ */
+export async function removeMember(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const teamId = req.params.id;
+    const targetUserId = req.params.targetUserId;
+    const actingUserId = req.user!.id;
+
+    // Acting user must belong to the team at minimum.
+    await verifyTeamAccess(actingUserId, teamId);
+
+    const isSelf = actingUserId === targetUserId;
+
+    if (!isSelf) {
+      // Kicking someone else requires OWNER role.
+      const actingMembership = await prisma.teamMember.findUnique({
+        where: { teamId_userId: { teamId, userId: actingUserId } },
+      });
+      if (!actingMembership || actingMembership.role !== TeamRole.OWNER) {
+        throw new ApiError('Tylko właściciel zespołu może usuwać innych członków', 403);
+      }
+    }
+
+    const targetMember = await prisma.teamMember.findUnique({
+      where: { teamId_userId: { teamId, userId: targetUserId } },
+    });
+
+    if (!targetMember) {
+      throw new ApiError('Wskazany użytkownik nie należy do zespołu', 404);
+    }
+
+    // Edge case: prevent the last remaining OWNER from being removed (whether by self-leave or kick).
+    if (targetMember.role === TeamRole.OWNER) {
+      const ownerCount = await countTeamOwners(teamId);
+      if (ownerCount <= 1) {
+        throw new ApiError(
+          'Nie możesz opuścić zespołu, będąc jego jedynym właścicielem. Przekaż własność komuś innemu lub usuń zespół.',
+          400,
+        );
+      }
+    }
+
+    // Transaction: null out assignments for tasks/events belonging to this team & user,
+    // then remove the membership. Prisma's SetNull on the assignee relation only fires
+    // when the *user* is deleted, so for a plain membership removal we null explicitly.
+    await prisma.$transaction([
+      prisma.task.updateMany({
+        where: { teamId, assigneeId: targetUserId },
+        data: { assigneeId: null },
+      }),
+      prisma.event.updateMany({
+        where: { teamId, assigneeId: targetUserId },
+        data: { assigneeId: null },
+      }),
+      prisma.teamMember.delete({
+        where: { teamId_userId: { teamId, userId: targetUserId } },
+      }),
+    ]);
+
+    res.json({
+      status: 'success',
+      data: {
+        teamId,
+        userId: targetUserId,
+        left: isSelf,
+      },
     });
   } catch (error) {
     next(error);
