@@ -16,6 +16,14 @@ const eventCategoryInclude = {
       icon: true,
     },
   },
+  assignee: {
+    select: {
+      id: true,
+      name: true,
+      avatarUrl: true,
+      email: true,
+    },
+  },
   attachments: {
     orderBy: { createdAt: 'desc' as const },
   },
@@ -36,6 +44,7 @@ const createEventSchema = z.object({
   location: z.string().optional(),
   categoryId: z.string().optional(),
   teamId: z.string().optional(),
+  assigneeId: z.string().cuid('Invalid assignee id').nullable().optional(),
   startTime: dateString,
   endTime: dateString,
   isAllDay: z.boolean().default(false),
@@ -44,6 +53,50 @@ const createEventSchema = z.object({
 });
 
 const updateEventSchema = createEventSchema.partial();
+
+/**
+ * Validates that the given assigneeId can legally own an event in the given workspace.
+ *
+ * Rules:
+ * - Personal event (teamId === null):
+ *     the assignee MUST be the acting user. Any other id is rejected with 403.
+ * - Team event (teamId !== null):
+ *     the assignee MUST have an active TeamMember record for that team.
+ *
+ * Returns the value that should be persisted on the Event row
+ * (either the validated assigneeId or null).
+ */
+async function resolveAssigneeId(
+  requestedAssigneeId: string | null | undefined,
+  teamId: string | null,
+  actingUserId: string,
+): Promise<string | null | undefined> {
+  if (requestedAssigneeId === undefined) {
+    return undefined;
+  }
+
+  if (requestedAssigneeId === null) {
+    return null;
+  }
+
+  if (teamId === null) {
+    if (requestedAssigneeId !== actingUserId) {
+      throw new ApiError('Personal events can only be assigned to yourself', 403);
+    }
+    return requestedAssigneeId;
+  }
+
+  const membership = await prisma.teamMember.findUnique({
+    where: { teamId_userId: { teamId, userId: requestedAssigneeId } },
+    select: { id: true },
+  });
+
+  if (!membership) {
+    throw new ApiError('Assignee is not a member of this team', 400);
+  }
+
+  return requestedAssigneeId;
+}
 
 async function findEventForUser(eventId: string, userId: string) {
   const event = await prisma.event.findUnique({ where: { id: eventId } });
@@ -164,6 +217,9 @@ export async function getEventById(req: Request, res: Response, next: NextFuncti
       where: { id: event.id },
       include: {
         category: true,
+        assignee: {
+          select: { id: true, name: true, avatarUrl: true, email: true },
+        },
         attachments: { orderBy: { createdAt: 'desc' } },
       },
     });
@@ -204,6 +260,16 @@ export async function createEvent(req: Request, res: Response, next: NextFunctio
       await ensureCategoryMatchesWorkspace(userId, data.categoryId, workspaceTeamId);
     }
 
+    // Default assignee to the acting user when not explicitly provided.
+    const requestedAssigneeId =
+      data.assigneeId === undefined ? userId : data.assigneeId;
+
+    const resolvedAssigneeId = await resolveAssigneeId(
+      requestedAssigneeId,
+      workspaceTeamId,
+      userId,
+    );
+
     const event = await prisma.event.create({
       data: {
         title: data.title,
@@ -216,6 +282,7 @@ export async function createEvent(req: Request, res: Response, next: NextFunctio
         recurrenceRule: data.recurrenceRule,
         userId,
         teamId: workspaceTeamId,
+        assigneeId: resolvedAssigneeId ?? null,
         reminderMinutes: data.reminderMinutes ?? null,
         reminderSent: false,
       },
@@ -270,14 +337,41 @@ export async function updateEvent(req: Request, res: Response, next: NextFunctio
       await ensureCategoryMatchesWorkspace(userId, categoryToValidate, nextTeamId);
     }
 
+    // Resolve assignee against the effective (post-update) workspace.
+    // If the workspace itself changes and the caller didn't touch assigneeId,
+    // we must re-validate the existing assignee against the new workspace,
+    // nullifying it if it no longer belongs.
+    const workspaceChanged =
+      data.teamId !== undefined && (existingEvent.teamId ?? null) !== nextTeamId;
+
+    let resolvedAssigneeId: string | null | undefined;
+    if (data.assigneeId !== undefined) {
+      resolvedAssigneeId = await resolveAssigneeId(data.assigneeId, nextTeamId, userId);
+    } else if (workspaceChanged && existingEvent.assigneeId) {
+      try {
+        resolvedAssigneeId = await resolveAssigneeId(
+          existingEvent.assigneeId,
+          nextTeamId,
+          userId,
+        );
+      } catch {
+        resolvedAssigneeId = null;
+      }
+    } else {
+      resolvedAssigneeId = undefined;
+    }
+
     const shouldResetReminder =
       data.reminderMinutes !== undefined || data.startTime !== undefined;
+
+    const { assigneeId: _ignoredAssigneeId, ...restData } = data;
 
     const event = await prisma.event.update({
       where: { id: req.params.id },
       data: {
-        ...data,
+        ...restData,
         teamId: data.teamId !== undefined ? data.teamId ?? null : undefined,
+        assigneeId: resolvedAssigneeId,
         startTime: data.startTime ? new Date(data.startTime) : undefined,
         endTime: data.endTime ? new Date(data.endTime) : undefined,
         reminderMinutes:

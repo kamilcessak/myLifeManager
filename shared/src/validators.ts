@@ -53,6 +53,7 @@ export const createEventSchema = z.object({
   location: z.string().optional(),
   categoryId: z.string().optional(),
   teamId: z.string().optional(),
+  assigneeId: z.string().cuid('Nieprawidłowy identyfikator użytkownika').nullable().optional(),
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),
   isAllDay: z.boolean().default(false),

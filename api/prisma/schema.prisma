@@ -76,7 +76,8 @@ model User {
   categories         Category[]
   tasks              Task[]             @relation("TaskOwner")
   assignedTasks      Task[]             @relation("TaskAssignee")
-  events             Event[]
+  events             Event[]            @relation("EventOwner")
+  assignedEvents     Event[]            @relation("EventAssignee")
   teamMembers        TeamMember[]
   attachmentsPending Attachment[]       @relation("UserPendingAttachments")
   pushSubscriptions  PushSubscription[]
@@ -208,7 +209,9 @@ model Event {
 
   // Relations
   userId      String
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User         @relation("EventOwner", fields: [userId], references: [id], onDelete: Cascade)
+  assigneeId  String?
+  assignee    User?        @relation("EventAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   teamId      String?
   team        Team?        @relation(fields: [teamId], references: [id], onDelete: Cascade)
   categoryId  String?
@@ -218,6 +221,8 @@ model Event {
   @@index([userId, startTime])
   @@index([reminderSent, startTime])
   @@index([userId, teamId])
+  @@index([assigneeId])
+  @@index([teamId, assigneeId])
   @@map("events")
 }
 
