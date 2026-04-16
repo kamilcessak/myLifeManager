@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto';
 import { InvitationStatus, TeamRole } from '@prisma/client';
 import { prisma } from '../config/database.js';
 import { ApiError } from '../middleware/errorHandler.js';
+import { verifyTeamAccess } from '../utils/teamAccess.js';
 
 const INVITE_EXPIRY_DAYS = 7;
 
@@ -46,6 +47,37 @@ export async function createTeam(req: Request, res: Response, next: NextFunction
     res.status(201).json({
       status: 'success',
       data: { team },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getTeamMembers(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const teamId = req.params.id;
+    const userId = req.user!.id;
+
+    await verifyTeamAccess(userId, teamId);
+
+    const members = await prisma.teamMember.findMany({
+      where: { teamId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            avatarUrl: true,
+          },
+        },
+      },
+      orderBy: { joinedAt: 'asc' },
+    });
+
+    res.json({
+      status: 'success',
+      data: { members },
     });
   } catch (error) {
     next(error);
@@ -161,7 +193,7 @@ export async function joinTeam(req: Request, res: Response, next: NextFunction):
     });
 
     if (!invitation) {
-      throw new ApiError('Invalid or expired code', 400);
+      throw new ApiError('Nieprawidłowy lub wygasły kod zaproszenia', 400);
     }
 
     const existingMember = await prisma.teamMember.findUnique({
@@ -171,7 +203,7 @@ export async function joinTeam(req: Request, res: Response, next: NextFunction):
     });
 
     if (existingMember) {
-      throw new ApiError('You are already a member of this team', 400);
+      throw new ApiError('Należysz już do tego zespołu', 400);
     }
 
     await prisma.$transaction([

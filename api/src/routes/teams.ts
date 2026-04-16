@@ -14,6 +14,7 @@ router.use(requireAuth);
 
 router.post('/', validateRequest(createTeamSchema), teamController.createTeam);
 router.get('/', teamController.getTeams);
+router.get('/:id/members', teamController.getTeamMembers);
 router.post('/:id/invites', validateRequest(inviteMembersSchema), teamController.inviteMembers);
 router.post('/join', validateRequest(joinTeamSchema), teamController.joinTeam);
 

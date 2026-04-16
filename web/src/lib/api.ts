@@ -1,5 +1,20 @@
 import axios from "axios";
+import type { Team, TeamInvitation, TeamRole } from "shared";
 import { SearchResult, type Attachment } from "../types";
+
+export type TeamMemberApiRow = {
+  id: string;
+  teamId: string;
+  userId: string;
+  role: TeamRole;
+  joinedAt: string;
+  user: {
+    id: string;
+    email: string;
+    name: string | null;
+    avatarUrl: string | null;
+  };
+};
 
 const api = axios.create({
   baseURL: "/api",
@@ -45,6 +60,26 @@ export const authApi = {
 export const teamsApi = {
   list: () =>
     api.get<{ status: string; data: { teams: unknown[] } }>("/teams"),
+
+  create: (data: { name: string }) =>
+    api.post<{ status: string; data: { team: Team } }>("/teams", data),
+
+  getMembers: (teamId: string) =>
+    api.get<{ status: string; data: { members: TeamMemberApiRow[] } }>(
+      `/teams/${teamId}/members`,
+    ),
+
+  inviteMembers: (teamId: string, emails: string[]) =>
+    api.post<{ status: string; data: { invitations: TeamInvitation[] } }>(
+      `/teams/${teamId}/invites`,
+      { emails },
+    ),
+
+  join: (code: string) =>
+    api.post<{ status: string; data: { teamId: string; message: string } }>(
+      "/teams/join",
+      { code },
+    ),
 };
 
 // Tasks
