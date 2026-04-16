@@ -1,7 +1,9 @@
+import path from 'path';
 import cron from 'node-cron';
 import { InvitationStatus } from '@prisma/client';
 import { prisma } from '../config/database.js';
 import { webpush } from '../config/webpush.js';
+import { safeUnlink } from '../utils/safeUnlink.js';
 
 async function sendPushToUser(userId: string, payload: { title: string; body: string; url?: string }) {
   const subscriptions = await prisma.pushSubscription.findMany({ where: { userId } });
@@ -187,4 +189,73 @@ export function startInvitationCleanupCron() {
   });
 
   console.log('🧹 Invitation cleanup cron started (daily at 00:00).');
+}
+
+// ==================== PENDING ATTACHMENT CLEANUP ====================
+
+/**
+ * Removes orphaned "pending" attachments — records that were uploaded
+ * before a task/event was created (tracked by `userId` + `expiresAt`)
+ * but were never linked to any resource and whose TTL has elapsed.
+ *
+ * Each iteration is wrapped in its own try/catch so a single filesystem
+ * or DB failure (e.g. file already gone, row already deleted) does not
+ * abort cleanup of the remaining orphans.
+ */
+async function cleanupExpiredPendingAttachments(): Promise<void> {
+  const uploadsDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
+  const now = new Date();
+
+  const expired = await prisma.attachment.findMany({
+    where: {
+      taskId: null,
+      eventId: null,
+      expiresAt: { lt: now },
+    },
+    select: { id: true, filename: true },
+  });
+
+  if (expired.length === 0) return;
+
+  let deletedCount = 0;
+
+  for (const attachment of expired) {
+    try {
+      const filePath = path.join(uploadsDir, attachment.filename);
+
+      // safeUnlink never throws — missing files are tolerated so we can
+      // still clear the stale DB row below.
+      await safeUnlink(filePath);
+
+      await prisma.attachment.delete({ where: { id: attachment.id } });
+
+      deletedCount++;
+    } catch (err) {
+      console.error(
+        `❌ Failed to clean up pending attachment ${attachment.id} (${attachment.filename}):`,
+        err,
+      );
+    }
+  }
+
+  if (deletedCount > 0) {
+    console.log(`🧹 Cleaned up ${deletedCount} expired pending attachment(s).`);
+  }
+}
+
+export function startAttachmentCleanupCron() {
+  // Run every hour at minute 0.
+  cron.schedule('0 * * * *', () => {
+    cleanupExpiredPendingAttachments().catch((err) => {
+      console.error('❌ Attachment cleanup cron error:', err);
+    });
+  });
+
+  // Also run once on startup to immediately purge anything that
+  // expired while the server was down.
+  cleanupExpiredPendingAttachments().catch((err) => {
+    console.error('❌ Attachment cleanup (startup) error:', err);
+  });
+
+  console.log('🧹 Attachment cleanup cron started (hourly).');
 }

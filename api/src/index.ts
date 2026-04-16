@@ -15,7 +15,11 @@ import attachmentsRoutes from "./routes/attachments.js";
 import searchRoutes from "./routes/search.js";
 import notificationsRoutes from "./routes/notifications.js";
 import teamsRoutes from "./routes/teams.js";
-import { startInvitationCleanupCron, startReminderCron } from "./cron/reminders.js";
+import {
+  startAttachmentCleanupCron,
+  startInvitationCleanupCron,
+  startReminderCron,
+} from "./cron/reminders.js";
 
 // Load environment variables
 dotenv.config();
@@ -67,6 +71,7 @@ app.listen(PORT, () => {
 
   startReminderCron();
   startInvitationCleanupCron();
+  startAttachmentCleanupCron();
 });
 
 export default app;

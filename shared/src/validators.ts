@@ -96,6 +96,15 @@ export const dateRangeQuerySchema = z.object({
   assigneeId: z.string().optional(),
 });
 
+/**
+ * Query schema for GET /api/tasks.
+ *
+ * `startDate` / `endDate` are ISO-8601 strings that define the time window
+ * used both for filtering persisted tasks AND for expanding tasks that
+ * carry an RRULE `recurrenceRule` into synthetic instances on the server.
+ * They are optional to keep non-calendar scopes (e.g. inbox) cheap, but
+ * are required whenever the client wants recurring-task expansion.
+ */
 export const taskQuerySchema = z.object({
   categoryId: z.string().optional(),
   isCompleted: z.enum(['true', 'false']).optional(),

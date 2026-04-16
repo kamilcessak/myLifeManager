@@ -7,6 +7,12 @@ import { useAssigneeFilterStore } from '../store/useAssigneeFilterStore';
 import { useAuthStore } from '../store/authStore';
 
 type InboxScope = { scope: 'inbox' };
+/**
+ * Scheduled scope feeds the calendar view. `startDate` / `endDate` MUST come
+ * from the currently visible calendar window (ISO strings). The API uses
+ * this window both to filter persisted tasks and to expand recurring
+ * tasks (RRULE) into synthetic instances, mirroring the events endpoint.
+ */
 type ScheduledScope = { scope: 'scheduled'; startDate: string; endDate: string };
 
 export type UseTasksOptions = InboxScope | ScheduledScope;

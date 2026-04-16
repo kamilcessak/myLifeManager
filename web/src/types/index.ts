@@ -59,6 +59,10 @@ export interface Task {
   attachments?: Attachment[];
   assigneeId?: string | null;
   assignee?: TaskAssignee | null;
+  // Populated on synthetic RRULE instances returned by the scheduled-tasks
+  // endpoint. The `id` of such an instance has the form `${originalTaskId}_${index}`.
+  originalTaskId?: string;
+  isRecurringInstance?: boolean;
 }
 
 export interface Event {

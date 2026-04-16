@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { RRule } from 'rrule';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../config/database.js';
 import { ApiError } from '../middleware/errorHandler.js';
 import { verifyTeamAccess } from '../utils/teamAccess.js';
@@ -152,69 +154,123 @@ async function requireTeamAccessOr403(
   }
 }
 
+type TaskWithRelations = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
+
+type RecurringTaskInstance = Omit<TaskWithRelations, 'scheduledStart' | 'scheduledEnd'> & {
+  scheduledStart: Date;
+  scheduledEnd: Date | null;
+  originalTaskId: string;
+  isRecurringInstance: true;
+};
+
 export async function getTasks(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const query = listTasksQuerySchema.parse(req.query);
     const userId = req.user!.id;
 
-    const where: Record<string, unknown> = {};
-
+    const workspaceWhere: Record<string, unknown> = {};
     if (query.teamId) {
       const allowed = await requireTeamAccessOr403(userId, query.teamId, res);
       if (!allowed) return;
-      Object.assign(where, { teamId: query.teamId });
+      Object.assign(workspaceWhere, { teamId: query.teamId });
     } else {
-      Object.assign(where, { userId, teamId: null });
+      Object.assign(workspaceWhere, { userId, teamId: null });
     }
 
-    if (query.categoryId) {
-      where.categoryId = query.categoryId;
-    }
-
-    if (query.assigneeId) {
-      where.assigneeId = query.assigneeId;
-    }
-
+    const commonFilters: Record<string, unknown> = { ...workspaceWhere };
+    if (query.categoryId) commonFilters.categoryId = query.categoryId;
+    if (query.assigneeId) commonFilters.assigneeId = query.assigneeId;
     if (query.isCompleted !== undefined) {
-      where.isCompleted = query.isCompleted === 'true';
+      commonFilters.isCompleted = query.isCompleted === 'true';
     }
 
+    const hasRange = Boolean(query.startDate && query.endDate);
+    const start = hasRange ? new Date(query.startDate!) : null;
+    const end = hasRange ? new Date(query.endDate!) : null;
+
+    // Build the scope-specific filter that is applied only to NON-recurring
+    // tasks. Recurring tasks (those with a non-null `recurrenceRule`) are
+    // fetched separately below and expanded via the RRULE library.
+    const scopeFilter: Record<string, unknown> = {};
     if (query.scheduled === 'true') {
-      if (query.startDate && query.endDate) {
-        where.scheduledStart = {
-          not: null,
-          gte: new Date(query.startDate),
-          lte: new Date(query.endDate),
-        };
-      } else {
-        where.scheduledStart = { not: null };
-      }
+      scopeFilter.scheduledStart = hasRange
+        ? { not: null, gte: start, lte: end }
+        : { not: null };
     } else if (query.scheduled === 'false') {
-      where.scheduledStart = null;
-    } else if (query.startDate && query.endDate) {
-      where.OR = [
-        {
-          scheduledStart: {
-            gte: new Date(query.startDate),
-            lte: new Date(query.endDate),
-          },
-        },
-        {
-          deadline: {
-            gte: new Date(query.startDate),
-            lte: new Date(query.endDate),
-          },
-        },
+      scopeFilter.scheduledStart = null;
+    } else if (hasRange) {
+      scopeFilter.OR = [
+        { scheduledStart: { gte: start, lte: end } },
+        { deadline: { gte: start, lte: end } },
       ];
     }
 
-    const tasks = await prisma.task.findMany({
-      where,
+    const nonRecurringTasks = await prisma.task.findMany({
+      where: {
+        ...commonFilters,
+        recurrenceRule: null,
+        ...scopeFilter,
+      },
       include: taskInclude,
       orderBy: [{ priority: 'desc' }, { deadline: 'asc' }, { createdAt: 'desc' }],
     });
 
-    res.json({ status: 'success', data: { tasks } });
+    // Recurring tasks are only expanded when we have a bounded time window
+    // AND the caller is actually interested in scheduled occurrences. For
+    // `scheduled === 'false'` the concept of instances does not apply.
+    let expandedRecurringTasks: RecurringTaskInstance[] = [];
+    const shouldExpandRecurring = hasRange && query.scheduled !== 'false';
+
+    if (shouldExpandRecurring) {
+      const recurringTasks = await prisma.task.findMany({
+        where: {
+          ...commonFilters,
+          recurrenceRule: { not: null },
+          // Without a base scheduledStart we have no anchor to apply the
+          // RRULE against (DTSTART-less strings are not supported reliably).
+          scheduledStart: { not: null },
+        },
+        include: taskInclude,
+      });
+
+      expandedRecurringTasks = recurringTasks.flatMap((task): RecurringTaskInstance[] => {
+        if (!task.recurrenceRule || !task.scheduledStart) return [];
+
+        try {
+          const rule = RRule.fromString(task.recurrenceRule);
+          const duration =
+            task.scheduledEnd && task.scheduledStart
+              ? task.scheduledEnd.getTime() - task.scheduledStart.getTime()
+              : 0;
+          const occurrences = rule.between(start!, end!, true);
+
+          return occurrences.map((occurrence, index) => ({
+            ...task,
+            id: `${task.id}_${index}`,
+            originalTaskId: task.id,
+            scheduledStart: occurrence,
+            scheduledEnd:
+              task.scheduledEnd !== null
+                ? new Date(occurrence.getTime() + duration)
+                : null,
+            isRecurringInstance: true,
+          }));
+        } catch (e) {
+          console.error('Error parsing task RRULE:', e);
+          return [];
+        }
+      });
+    }
+
+    const allTasks = [...nonRecurringTasks, ...expandedRecurringTasks].sort((a, b) => {
+      if (a.priority !== b.priority) return b.priority - a.priority;
+      const aDeadline = a.deadline ? new Date(a.deadline).getTime() : Number.POSITIVE_INFINITY;
+      const bDeadline = b.deadline ? new Date(b.deadline).getTime() : Number.POSITIVE_INFINITY;
+      if (aDeadline !== bDeadline) return aDeadline - bDeadline;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    res.json({ status: 'success', data: { tasks: allTasks } });
   } catch (error) {
     next(error);
   }
@@ -302,6 +358,14 @@ export async function createTask(req: Request, res: Response, next: NextFunction
       }
     }
 
+    if (data.recurrenceRule) {
+      try {
+        RRule.fromString(data.recurrenceRule);
+      } catch {
+        throw new ApiError('Invalid recurrence rule format', 400);
+      }
+    }
+
     if (data.categoryId) {
       await ensureCategoryMatchesWorkspace(userId, data.categoryId, workspaceTeamId);
     }
@@ -374,6 +438,14 @@ export async function updateTask(req: Request, res: Response, next: NextFunction
           return;
         }
         throw err;
+      }
+    }
+
+    if (data.recurrenceRule) {
+      try {
+        RRule.fromString(data.recurrenceRule);
+      } catch {
+        throw new ApiError('Invalid recurrence rule format', 400);
       }
     }
 
