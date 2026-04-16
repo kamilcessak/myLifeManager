@@ -935,9 +935,10 @@ export default function TaskModal({
             )}
           </div>
         </form>
+        </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-white rounded-b-xl dark:border-gray-700 dark:bg-transparent">
+        <div className="task-modal-footer flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-white rounded-b-xl dark:border-gray-700 dark:bg-transparent shrink-0">
           {isEditing ? (
             <button
               type="button"
@@ -979,7 +980,6 @@ export default function TaskModal({
               </button>
             )}
           </div>
-        </div>
         </div>
       </div>
     </div>

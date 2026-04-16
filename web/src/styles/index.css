@@ -605,16 +605,16 @@ html.light .inbox-tab:hover {
   background-color: var(--app-surface);
   color: var(--app-text);
   border: 1px solid var(--app-border);
-  @apply rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto;
-}
-
-/* Task modal keeps scrollbar inside rounded container */
-.task-modal-content {
+  @apply rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh];
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.task-modal-scroll {
-  max-height: 90vh;
+.task-modal-scroll,
+.event-modal-scroll {
+  flex: 1 1 0%;
+  min-height: 0;
   overflow-y: auto;
 }
 

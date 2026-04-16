@@ -356,6 +356,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
         className="modal-content event-modal-content animate-fade-in"
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="event-modal-scroll">
         {/* Header */}
         <div className="event-modal-header flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-transparent">
           <h2 className="event-modal-title text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -678,9 +679,10 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
             disabled={mode === 'view'}
           />
         </form>
+        </div>
 
         {/* Footer */}
-        <div className="event-modal-footer flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-white rounded-b-xl dark:border-gray-700 dark:bg-gray-800/60">
+        <div className="event-modal-footer flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-white rounded-b-xl dark:border-gray-700 dark:bg-gray-800/60 shrink-0">
           {isEditing ? (
             <button
               type="button"
