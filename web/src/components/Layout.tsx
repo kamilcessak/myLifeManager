@@ -1,8 +1,6 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
-import { Bell, BellOff, BellRing, Calendar, Check, ChevronDown, LogOut, Monitor, Moon, Settings, User, Sun } from 'lucide-react';
+import { Calendar, ChevronDown, LogOut, Settings, User } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import { ThemeMode, useTheme } from '../context/ThemeContext';
-import { usePushNotifications } from '../hooks/usePushNotifications';
 import SearchBar from './SearchBar';
 import WorkspaceSwitcher from './layout/WorkspaceSwitcher';
 import ProfileSettingsModal from './profile/ProfileSettingsModal';
@@ -13,8 +11,6 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   const { user, logout } = useAuthStore();
-  const { theme, setTheme } = useTheme();
-  const { permission, isSubscribed, subscribe, unsubscribe } = usePushNotifications();
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -40,12 +36,6 @@ export default function Layout({ children }: LayoutProps) {
     };
   }, []);
 
-  const themeOptions: Array<{ value: ThemeMode; label: string; icon: ReactNode }> = [
-    { value: 'light', label: 'Jasny', icon: <Sun className="w-4 h-4" /> },
-    { value: 'dark', label: 'Ciemny', icon: <Moon className="w-4 h-4" /> },
-    { value: 'system', label: 'Systemowy', icon: <Monitor className="w-4 h-4" /> },
-  ];
-
   return (
     <div className="min-h-screen bg-[var(--app-bg)] text-[var(--app-text)]">
       {/* Header */}
@@ -66,28 +56,6 @@ export default function Layout({ children }: LayoutProps) {
 
         <div className="flex shrink-0 items-center gap-3 sm:gap-4">
           <WorkspaceSwitcher />
-          {permission !== 'unsupported' && (
-            <button
-              onClick={isSubscribed ? unsubscribe : subscribe}
-              className="relative p-2 rounded-lg app-text-muted hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)] transition-colors"
-              title={
-                permission === 'denied'
-                  ? 'Powiadomienia zablokowane w przeglądarce'
-                  : isSubscribed
-                    ? 'Wyłącz powiadomienia'
-                    : 'Włącz powiadomienia'
-              }
-              disabled={permission === 'denied' || permission === 'loading'}
-            >
-              {permission === 'denied' ? (
-                <BellOff className="w-5 h-5" />
-              ) : isSubscribed ? (
-                <BellRing className="w-5 h-5 text-blue-500" />
-              ) : (
-                <Bell className="w-5 h-5" />
-              )}
-            </button>
-          )}
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setIsAccountMenuOpen((prev) => !prev)}
@@ -112,77 +80,16 @@ export default function Layout({ children }: LayoutProps) {
 
             {isAccountMenuOpen && (
               <div className="absolute right-0 mt-2 w-56 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-lg p-2 z-30">
-                <p className="px-2 pb-2 text-xs font-semibold app-text-muted">Motyw</p>
-                <div className="space-y-1">
-                  {themeOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => {
-                        setTheme(option.value);
-                        setIsAccountMenuOpen(false);
-                      }}
-                      className="w-full flex items-center justify-between rounded-md px-2 py-2 text-sm app-text hover:bg-[var(--app-surface-muted)]"
-                    >
-                      <span className="flex items-center gap-2">
-                        {option.icon}
-                        {option.label}
-                      </span>
-                      {theme === option.value ? <Check className="w-4 h-4 text-blue-500" /> : null}
-                    </button>
-                  ))}
+                <div className="px-2 pb-2">
+                  <p className="text-sm font-medium app-text truncate">
+                    {user?.name || user?.email}
+                  </p>
+                  {user?.name && user?.email ? (
+                    <p className="text-xs app-text-muted truncate">{user.email}</p>
+                  ) : null}
                 </div>
 
-                {permission !== 'unsupported' && (
-                  <>
-                    <div className="my-2 h-px bg-[var(--app-border)]" />
-
-                    <p className="px-2 pb-2 text-xs font-semibold app-text-muted">Powiadomienia push</p>
-
-                    {permission === 'denied' ? (
-                      <div className="px-2 py-2 text-xs app-text-muted">
-                        <span className="flex items-center gap-2">
-                          <BellOff className="w-4 h-4 shrink-0" />
-                          Zablokowane w przeglądarce. Zmień w ustawieniach witryny.
-                        </span>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          if (isSubscribed) {
-                            unsubscribe();
-                          } else {
-                            subscribe();
-                          }
-                        }}
-                        disabled={permission === 'loading'}
-                        className="w-full flex items-center justify-between gap-3 rounded-md px-2 py-2 text-sm app-text hover:bg-[var(--app-surface-muted)]"
-                      >
-                        <span className="flex items-center gap-2 min-w-0">
-                          {isSubscribed ? (
-                            <BellRing className="w-4 h-4 shrink-0 text-blue-500" />
-                          ) : (
-                            <Bell className="w-4 h-4 shrink-0" />
-                          )}
-                          <span className="truncate">{isSubscribed ? 'Włączone' : 'Wyłączone'}</span>
-                        </span>
-                        <span
-                          aria-hidden="true"
-                          className={`shrink-0 w-9 h-5 rounded-full relative transition-colors duration-200 ${
-                            isSubscribed ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
-                          }`}
-                        >
-                          <span
-                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                              isSubscribed ? 'translate-x-4' : 'translate-x-0'
-                            }`}
-                          />
-                        </span>
-                      </button>
-                    )}
-                  </>
-                )}
-
-                <div className="my-2 h-px bg-[var(--app-border)]" />
+                <div className="my-1 h-px bg-[var(--app-border)]" />
 
                 <button
                   onClick={() => {

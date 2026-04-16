@@ -74,6 +74,12 @@ export const authApi = {
         };
       };
     }>("/auth/me", data),
+  changePassword: (data: {
+    currentPassword: string;
+    newPassword: string;
+    confirmNewPassword: string;
+  }) =>
+    api.patch<{ status: string; message: string }>("/auth/password", data),
   uploadAvatar: (file: File | Blob, filename = "avatar.jpg") => {
     const formData = new FormData();
     const blobFile =

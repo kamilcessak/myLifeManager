@@ -6,9 +6,11 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { z } from 'zod';
+import { changePasswordSchema } from 'shared';
 import { prisma } from '../config/database.js';
 import { requireAuth, AuthenticatedUser } from '../middleware/auth.js';
 import { ApiError } from '../middleware/errorHandler.js';
+import { validateRequest } from '../middleware/validateRequest.js';
 import { safeUnlink } from '../utils/safeUnlink.js';
 
 const router = Router();
@@ -165,6 +167,56 @@ router.patch('/me', requireAuth, async (req: Request, res: Response, next: NextF
     next(error);
   }
 });
+
+// PATCH /api/auth/password - Change current user's password
+router.patch(
+  '/password',
+  requireAuth,
+  validateRequest(changePasswordSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { currentPassword, newPassword } = req.body as {
+        currentPassword: string;
+        newPassword: string;
+      };
+
+      const userId = req.user!.id;
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, password: true },
+      });
+
+      if (!user) {
+        throw new ApiError('Użytkownik nie istnieje', 404);
+      }
+
+      const isCurrentValid = await bcrypt.compare(currentPassword, user.password);
+      if (!isCurrentValid) {
+        throw new ApiError('Nieprawidłowe obecne hasło', 400);
+      }
+
+      const isSameAsOld = await bcrypt.compare(newPassword, user.password);
+      if (isSameAsOld) {
+        throw new ApiError('Nowe hasło musi różnić się od obecnego', 400);
+      }
+
+      const newHashedPassword = await bcrypt.hash(newPassword, 12);
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { password: newHashedPassword },
+      });
+
+      res.status(200).json({
+        status: 'success',
+        message: 'Hasło zostało zmienione',
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Avatar upload (POST /api/auth/avatar)

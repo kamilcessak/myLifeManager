@@ -12,6 +12,17 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Hasło jest wymagane'),
 });
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Obecne hasło jest wymagane'),
+    newPassword: z.string().min(8, 'Nowe hasło musi mieć co najmniej 8 znaków'),
+    confirmNewPassword: z.string().min(1, 'Potwierdzenie hasła jest wymagane'),
+  })
+  .refine((data) => data.newPassword === data.confirmNewPassword, {
+    message: 'Hasła nie są identyczne',
+    path: ['confirmNewPassword'],
+  });
+
 export const updateProfileSchema = z.object({
   name: z
     .string()
@@ -138,6 +149,7 @@ export const searchQuerySchema = z.object({
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
