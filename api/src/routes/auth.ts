@@ -12,6 +12,7 @@ import { requireAuth, AuthenticatedUser } from '../middleware/auth.js';
 import { ApiError } from '../middleware/errorHandler.js';
 import { validateRequest } from '../middleware/validateRequest.js';
 import { safeUnlink } from '../utils/safeUnlink.js';
+import { deleteUserAccount, exportUserData } from '../controllers/authController.js';
 
 const router = Router();
 
@@ -136,6 +137,12 @@ router.get('/me', requireAuth, async (req: Request, res: Response) => {
     },
   });
 });
+
+// GET /api/auth/export - Export personal data (GDPR / RODO)
+router.get('/export', requireAuth, exportUserData);
+
+// DELETE /api/auth/me - Permanently delete current account
+router.delete('/me', requireAuth, deleteUserAccount);
 
 // PATCH /api/auth/me - Update current user
 router.patch('/me', requireAuth, async (req: Request, res: Response, next: NextFunction) => {

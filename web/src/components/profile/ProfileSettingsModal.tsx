@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Lock, Settings, SlidersHorizontal, User, X } from 'lucide-react';
+import { Lock, Settings, ShieldAlert, SlidersHorizontal, User, X } from 'lucide-react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import ProfileTab from './tabs/ProfileTab';
 import SecurityTab from './tabs/SecurityTab';
 import PreferencesTab from './tabs/PreferencesTab';
+import AccountTab from './tabs/AccountTab';
 
-type TabId = 'profile' | 'security' | 'preferences';
+type TabId = 'profile' | 'security' | 'preferences' | 'account';
 
 interface ProfileSettingsModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ const TABS: Array<{
   { id: 'profile', label: 'Profil', icon: User },
   { id: 'security', label: 'Bezpieczeństwo', icon: Lock },
   { id: 'preferences', label: 'Preferencje', icon: SlidersHorizontal },
+  { id: 'account', label: 'Konto', icon: ShieldAlert },
 ];
 
 export default function ProfileSettingsModal({
@@ -124,6 +126,15 @@ export default function ProfileSettingsModal({
             hidden={activeTab !== 'preferences'}
           >
             {activeTab === 'preferences' && <PreferencesTab />}
+          </div>
+
+          <div
+            role="tabpanel"
+            id="tabpanel-account"
+            aria-labelledby="tab-account"
+            hidden={activeTab !== 'account'}
+          >
+            {activeTab === 'account' && <AccountTab />}
           </div>
         </div>
       </div>

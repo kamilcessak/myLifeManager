@@ -80,6 +80,11 @@ export const authApi = {
     confirmNewPassword: string;
   }) =>
     api.patch<{ status: string; message: string }>("/auth/password", data),
+  exportData: () =>
+    api.get<Blob>("/auth/export", {
+      responseType: "blob",
+    }),
+  deleteAccount: () => api.delete<void>("/auth/me"),
   uploadAvatar: (file: File | Blob, filename = "avatar.jpg") => {
     const formData = new FormData();
     const blobFile =
