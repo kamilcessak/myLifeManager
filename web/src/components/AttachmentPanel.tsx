@@ -178,8 +178,8 @@ export default function AttachmentPanel({
       const res = await attachmentsApi.upload(file, opts);
       const att = res.data.data.attachment;
       onAttachmentsChange((prev) => [att, ...prev]);
-      queryClient.invalidateQueries({ queryKey: ['inbox-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
     },
     [parentId, variant, onAttachmentsChange, queryClient],
   );
@@ -207,8 +207,8 @@ export default function AttachmentPanel({
       try {
         await attachmentsApi.delete(id);
         onAttachmentsChange((prev) => prev.filter((a) => a.id !== id));
-        queryClient.invalidateQueries({ queryKey: ['inbox-tasks'] });
-        queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        queryClient.invalidateQueries({ queryKey: ['events'] });
         toast.success('Załącznik usunięty');
       } catch (err) {
         let msg = 'Nie udało się usunąć załącznika';

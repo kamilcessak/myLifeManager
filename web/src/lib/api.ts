@@ -41,6 +41,12 @@ export const authApi = {
   me: () => api.get("/auth/me"),
 };
 
+// Teams
+export const teamsApi = {
+  list: () =>
+    api.get<{ status: string; data: { teams: unknown[] } }>("/teams"),
+};
+
 // Tasks
 export const tasksApi = {
   getAll: (params?: {
@@ -49,10 +55,16 @@ export const tasksApi = {
     scheduled?: boolean;
     startDate?: string;
     endDate?: string;
+    teamId?: string;
   }) => api.get("/tasks", { params }),
 
-  getInbox: (categoryId?: string) =>
-    api.get("/tasks/inbox", { params: { categoryId } }),
+  getInbox: (categoryId?: string, teamId?: string | null) =>
+    api.get("/tasks/inbox", {
+      params: {
+        ...(categoryId ? { categoryId } : {}),
+        ...(teamId ? { teamId } : {}),
+      },
+    }),
 
   getById: (id: string) => api.get(`/tasks/${id}`),
 
@@ -60,6 +72,7 @@ export const tasksApi = {
     title: string;
     description?: string;
     categoryId?: string;
+    teamId?: string;
     priority?: number;
     deadline?: string;
     scheduledStart?: string;
@@ -85,6 +98,7 @@ export const tasksApi = {
       imageUrl: string;
       isCompleted: boolean;
       reminderMinutes: number | null;
+      teamId: string;
     }>,
   ) => api.patch(`/tasks/${id}`, data),
 
@@ -104,6 +118,7 @@ export const eventsApi = {
     startDate: string;
     endDate: string;
     categoryId?: string;
+    teamId?: string;
   }) => api.get("/events", { params }),
 
   getById: (id: string) => api.get(`/events/${id}`),
@@ -113,6 +128,7 @@ export const eventsApi = {
     description?: string;
     location?: string;
     categoryId?: string;
+    teamId?: string;
     startTime: string;
     endTime: string;
     isAllDay?: boolean;
@@ -132,6 +148,7 @@ export const eventsApi = {
       isAllDay: boolean;
       recurrenceRule: string;
       reminderMinutes: number | null;
+      teamId: string;
     }>,
   ) => api.patch(`/events/${id}`, data),
 
@@ -140,9 +157,10 @@ export const eventsApi = {
 
 // Categories
 export const categoriesApi = {
-  getAll: () => api.get("/categories"),
+  getAll: (teamId?: string | null) =>
+    api.get("/categories", { params: teamId ? { teamId } : undefined }),
 
-  create: (data: { name: string; color: string; icon?: string }) =>
+  create: (data: { name: string; color: string; icon?: string; teamId?: string }) =>
     api.post("/categories", data),
 
   update: (

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, CheckSquare, Loader2, Search, X } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { categoriesApi, eventsApi, searchApi, tasksApi } from '../lib/api';
-import { Category, Event, SearchResult, Task } from '../types';
+import { eventsApi, searchApi, tasksApi } from '../lib/api';
+import { useCategories } from '../hooks/useCategories';
+import { Event, SearchResult, Task } from '../types';
 import { useDebounce } from '../hooks/useDebounce';
 import TaskModal from './TaskModal';
 import EventModal from './EventModal';
@@ -27,13 +27,7 @@ export default function SearchBar() {
       ? 'Cmd K'
       : 'Ctrl K';
 
-  const { data: categoriesData } = useQuery({
-    queryKey: ['categories'],
-    queryFn: async () => {
-      const response = await categoriesApi.getAll();
-      return response.data.data.categories as Category[];
-    },
-  });
+  const { data: categoriesData } = useCategories();
 
   const categories = categoriesData || [];
 

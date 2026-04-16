@@ -1,5 +1,8 @@
+import { useEffect, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from './store/authStore';
+import { useWorkspaceStore } from './store/useWorkspaceStore';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
@@ -41,9 +44,33 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function WorkspaceQueryInvalidation() {
+  const queryClient = useQueryClient();
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const previousWorkspaceId = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (previousWorkspaceId.current === undefined) {
+      previousWorkspaceId.current = activeWorkspaceId;
+      return;
+    }
+    if (previousWorkspaceId.current === activeWorkspaceId) {
+      return;
+    }
+    previousWorkspaceId.current = activeWorkspaceId;
+    void queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    void queryClient.invalidateQueries({ queryKey: ['events'] });
+    void queryClient.invalidateQueries({ queryKey: ['categories'] });
+  }, [activeWorkspaceId, queryClient]);
+
+  return null;
+}
+
 export default function App() {
   return (
-    <Routes>
+    <>
+      <WorkspaceQueryInvalidation />
+      <Routes>
       <Route
         path="/login"
         element={
@@ -72,5 +99,6 @@ export default function App() {
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }

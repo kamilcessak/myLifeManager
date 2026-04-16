@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeToClose } from '../hooks/useEscapeToClose';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, MapPin, Calendar, Repeat, Trash2, Edit2, ChevronDown } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { Event, Category, Attachment } from '../types';
+import type { Event, Attachment } from '../types';
 import axios from 'axios';
-import { eventsApi, categoriesApi, attachmentsApi } from '../lib/api';
+import { eventsApi, attachmentsApi } from '../lib/api';
+import { useCategories } from '../hooks/useCategories';
+import { useWorkspaceStore } from '../store/useWorkspaceStore';
 import AttachmentPanel from './AttachmentPanel';
 import ReminderPicker from './ReminderPicker';
 import toast from 'react-hot-toast';
@@ -37,13 +39,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
   const [mode, setMode] = useState<'view' | 'edit'>(isEditing ? initialMode : 'edit');
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
 
-  const { data: categoriesData } = useQuery({
-    queryKey: ['categories'],
-    queryFn: async () => {
-      const response = await categoriesApi.getAll();
-      return response.data.data.categories as Category[];
-    },
-  });
+  const { data: categoriesData } = useCategories();
 
   const categories = categoriesData || [];
 
@@ -224,11 +220,13 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
   const createMutation = useMutation({
     mutationFn: (vars: { data: typeof formData; queuedFiles: File[] }) => {
       const { data } = vars;
+      const teamId = useWorkspaceStore.getState().activeWorkspaceId;
       return eventsApi.create({
         title: data.title,
         description: data.description,
         location: data.location,
         categoryId: data.categoryId || undefined,
+        ...(teamId ? { teamId } : {}),
         startTime: new Date(data.startTime).toISOString(),
         endTime: new Date(data.endTime).toISOString(),
         isAllDay: data.isAllDay,
@@ -262,7 +260,8 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
         }
       }
 
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
 
       if (queuedFiles.length === 0) {
         toast.success('Wydarzenie utworzone');
@@ -299,7 +298,8 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
         reminderMinutes: data.reminderMinutes,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
       toast.success('Wydarzenie zaktualizowane');
       onClose();
     },
@@ -311,7 +311,8 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
   const deleteMutation = useMutation({
     mutationFn: () => eventsApi.delete(event!.originalEventId || event!.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
       toast.success('Wydarzenie usunięte');
       onClose();
     },

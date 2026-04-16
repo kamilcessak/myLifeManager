@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "shared": "*",
     "@fullcalendar/core": "^6.1.10",
     "@fullcalendar/daygrid": "^6.1.10",
     "@fullcalendar/interaction": "^6.1.10",

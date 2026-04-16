@@ -1,13 +1,18 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin, { Draggable } from '@fullcalendar/interaction';
 import { EventClickArg, EventDropArg, DateSelectArg, EventContentArg } from '@fullcalendar/core';
 import { startOfMonth, endOfMonth, addMonths, subMonths, subDays, startOfDay, endOfDay } from 'date-fns';
-import { tasksApi, eventsApi, categoriesApi } from '../lib/api';
-import { Task, Event, CalendarItem, Category } from '../types';
+import { tasksApi, eventsApi } from '../lib/api';
+import { Task, Event, CalendarItem } from '../types';
+import { useCategories } from '../hooks/useCategories';
+import { useTasks } from '../hooks/useTasks';
+import { useEvents } from '../hooks/useEvents';
+import { useWorkspaceStore } from '../store/useWorkspaceStore';
+import { patchTaskInTaskCaches, snapshotTaskCaches, restoreTaskCaches } from '../lib/workspaceTaskCache';
 import EventModal from './EventModal';
 import TaskModal from './TaskModal';
 import SelectAddTypeModal, { CalendarSlotSelection } from './SelectAddTypeModal';
@@ -37,42 +42,20 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
   const startDate = startOfMonth(subMonths(currentDate, 1)).toISOString();
   const endDate = endOfMonth(addMonths(currentDate, 1)).toISOString();
 
-  // Fetch categories for TaskModal
-  const { data: categoriesData } = useQuery({
-    queryKey: ['categories'],
-    queryFn: async () => {
-      const response = await categoriesApi.getAll();
-      return response.data.data.categories as Category[];
-    },
-  });
-
+  const { data: categoriesData } = useCategories();
   const categories = categoriesData || [];
 
-  // Fetch calendar items (tasks + events)
-  const { data: calendarData } = useQuery({
-    queryKey: ['calendar-items', startDate, endDate],
-    queryFn: async () => {
-      const [tasksRes, eventsRes] = await Promise.all([
-        tasksApi.getAll({
-          // scheduled: true, // Fetch all tasks in range (scheduled OR deadline)
-          startDate,
-          endDate,
-        }),
-        eventsApi.getAll({
-          startDate,
-          endDate,
-        }),
-      ]);
+  const { data: rangeTasks } = useTasks({ scope: 'scheduled', startDate, endDate });
+  const { data: rangeEvents } = useEvents(startDate, endDate);
 
-      const tasks = tasksRes.data.data.tasks as Task[];
-      const events = eventsRes.data.data.events as Event[];
+  const calendarData = useMemo((): CalendarItem[] => {
+    const tasks = rangeTasks ?? [];
+    const events = rangeEvents ?? [];
 
-      // Convert to FullCalendar format - only show tasks that are explicitly scheduled (have scheduledStart).
-      // Tasks with only deadline but "Pokaż na kalendarzu" unchecked must NOT appear here.
-      const calendarItems: CalendarItem[] = [
-        ...tasks
-          .filter((task) => task.scheduledStart != null && task.scheduledEnd != null)
-          .map((task) => {
+    return [
+      ...tasks
+        .filter((task) => task.scheduledStart != null && task.scheduledEnd != null)
+        .map((task) => {
           const start = new Date(task.scheduledStart!);
           const end = new Date(task.scheduledEnd!);
 
@@ -85,28 +68,22 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
             type: 'task' as const,
             color: task.category?.color || '#6b7280',
             data: task,
-            classNames: [
-              'fc-event-task',
-              task.isCompleted ? 'fc-event-task-completed' : ''
-            ],
+            classNames: ['fc-event-task', task.isCompleted ? 'fc-event-task-completed' : ''].filter(Boolean),
           };
         }),
-        ...events.map((event) => ({
-          id: event.isRecurringInstance ? event.id : `event-${event.id}`,
-          title: event.title,
-          start: new Date(event.startTime),
-          end: new Date(event.endTime),
-          allDay: event.isAllDay,
-          type: 'event' as const,
-          color: event.category?.color || '#3b82f6',
-          data: event,
-          classNames: ['fc-event-event'],
-        })),
-      ];
-
-      return calendarItems;
-    },
-  });
+      ...events.map((event) => ({
+        id: event.isRecurringInstance ? event.id : `event-${event.id}`,
+        title: event.title,
+        start: new Date(event.startTime),
+        end: new Date(event.endTime),
+        allDay: event.isAllDay,
+        type: 'event' as const,
+        color: event.category?.color || '#3b82f6',
+        data: event,
+        classNames: ['fc-event-event'],
+      })),
+    ];
+  }, [rangeTasks, rangeEvents]);
 
   // Schedule task mutation (for drag & drop from inbox)
   const scheduleTaskMutation = useMutation({
@@ -116,8 +93,8 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
         scheduledEnd: end.toISOString(),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
-      queryClient.invalidateQueries({ queryKey: ['inbox-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
       toast.success('Zadanie zaplanowane');
     },
     onError: () => {
@@ -133,11 +110,11 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
         scheduledEnd: end.toISOString(),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
     onError: () => {
       toast.error('Nie udało się zaktualizować zadania');
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 
@@ -149,11 +126,11 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
         endTime: end.toISOString(),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
     },
     onError: () => {
       toast.error('Nie udało się zaktualizować wydarzenia');
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
     },
   });
 
@@ -165,8 +142,7 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
       toast.error('Nie udało się zaktualizować statusu zadania');
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
-      queryClient.invalidateQueries({ queryKey: ['inbox-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 
@@ -252,44 +228,18 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
 
   const handleToggleComplete = useCallback((taskId: string, currentStatus: boolean) => {
     const nextIsCompleted = !currentStatus;
-    const previousCalendarItems = queryClient.getQueriesData({ queryKey: ['calendar-items'] });
-    const previousInboxTasks = queryClient.getQueryData<Task[]>(['inbox-tasks']);
+    const teamId = useWorkspaceStore.getState().activeWorkspaceId;
+    const previous = snapshotTaskCaches(queryClient, teamId);
 
-    queryClient.setQueriesData({ queryKey: ['calendar-items'] }, (oldData: any) => {
-      if (!Array.isArray(oldData)) {
-        return oldData;
-      }
-
-      return oldData.map((item: CalendarItem) => {
-        if (item.type !== 'task' || (item.data as Task).id !== taskId) {
-          return item;
-        }
-
-        return {
-          ...item,
-          data: {
-            ...(item.data as Task),
-            isCompleted: nextIsCompleted,
-          },
-          classNames: ['fc-event-task', nextIsCompleted ? 'fc-event-task-completed' : ''].filter(Boolean),
-        };
-      });
-    });
-
-    queryClient.setQueryData<Task[]>(['inbox-tasks'], (old = []) =>
-      old.map((task) => (task.id === taskId ? { ...task, isCompleted: nextIsCompleted } : task))
-    );
+    patchTaskInTaskCaches(queryClient, teamId, taskId, { isCompleted: nextIsCompleted });
 
     toggleTaskCompleteMutation.mutate(
       { taskId, isCompleted: nextIsCompleted },
       {
         onError: () => {
-          previousCalendarItems.forEach(([queryKey, queryData]) => {
-            queryClient.setQueryData(queryKey, queryData);
-          });
-          queryClient.setQueryData(['inbox-tasks'], previousInboxTasks || []);
+          restoreTaskCaches(queryClient, previous);
         },
-      }
+      },
     );
   }, [queryClient, toggleTaskCompleteMutation]);
 

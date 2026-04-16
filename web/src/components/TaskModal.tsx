@@ -3,6 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Clock, Flag, Trash2, CalendarCheck, ChevronDown, Edit2, CheckCircle2, Undo2 } from 'lucide-react';
 import { Task, Category, Attachment } from '../types';
 import { tasksApi, attachmentsApi } from '../lib/api';
+import { useWorkspaceStore } from '../store/useWorkspaceStore';
+import { patchTaskInTaskCaches, snapshotTaskCaches, restoreTaskCaches } from '../lib/workspaceTaskCache';
 import AttachmentPanel from './AttachmentPanel';
 import ReminderPicker from './ReminderPicker';
 import { cn, getPriorityChipClass, getPriorityLabel, normalizePriority } from '../lib/utils';
@@ -184,7 +186,8 @@ export default function TaskModal({
   const createMutation = useMutation({
     mutationFn: (vars: { data: typeof formData; queuedFiles: File[] }) => {
       const { data } = vars;
-      const payload: any = {
+      const teamId = useWorkspaceStore.getState().activeWorkspaceId;
+      const payload: Record<string, unknown> = {
         title: data.title,
         description: data.description || undefined,
         categoryId: data.categoryId || undefined,
@@ -192,6 +195,10 @@ export default function TaskModal({
         deadline: data.deadline ? new Date(data.deadline).toISOString() : undefined,
         reminderMinutes: data.reminderMinutes,
       };
+
+      if (teamId) {
+        payload.teamId = teamId;
+      }
 
       if (data.showOnCalendar) {
         if (data.scheduledAllDay && data.scheduledDate) {
@@ -206,7 +213,7 @@ export default function TaskModal({
         }
       }
 
-      return tasksApi.create(payload);
+      return tasksApi.create(payload as Parameters<typeof tasksApi.create>[0]);
     },
     onSuccess: async (response, vars) => {
       const newTask = response.data.data.task;
@@ -233,8 +240,8 @@ export default function TaskModal({
         }
       }
 
-      queryClient.invalidateQueries({ queryKey: ['inbox-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
 
       if (queuedFiles.length === 0) {
         toast.success('Zadanie utworzone');
@@ -290,8 +297,8 @@ export default function TaskModal({
       return tasksApi.update(task!.id, payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inbox-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
       toast.success('Zadanie zaktualizowane');
       onClose();
     },
@@ -303,8 +310,8 @@ export default function TaskModal({
   const deleteMutation = useMutation({
     mutationFn: () => tasksApi.delete(task!.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inbox-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
       toast.success('Zadanie usunięte');
       onClose();
     },
@@ -316,44 +323,20 @@ export default function TaskModal({
   const toggleCompleteMutation = useMutation({
     mutationFn: (isCompleted: boolean) => tasksApi.update(task!.id, { isCompleted }),
     onMutate: (isCompleted) => {
-      const previousInboxTasks = queryClient.getQueryData<Task[]>(['inbox-tasks']);
-      const previousCalendarItems = queryClient.getQueriesData({ queryKey: ['calendar-items'] });
-
-      queryClient.setQueryData<Task[]>(['inbox-tasks'], (old = []) =>
-        old.map((t) => (t.id === task!.id ? { ...t, isCompleted } : t))
-      );
-
-      queryClient.setQueriesData({ queryKey: ['calendar-items'] }, (oldData: unknown) => {
-        if (!Array.isArray(oldData)) {
-          return oldData;
-        }
-        return oldData.map((item: { type?: string; data?: Task; classNames?: string[] }) => {
-          if (item?.type !== 'task' || item?.data?.id !== task!.id) {
-            return item;
-          }
-          return {
-            ...item,
-            data: { ...item.data, isCompleted },
-            classNames: ['fc-event-task', isCompleted ? 'fc-event-task-completed' : ''].filter(Boolean),
-          };
-        });
-      });
-
+      const teamId = useWorkspaceStore.getState().activeWorkspaceId;
+      const previous = snapshotTaskCaches(queryClient, teamId);
+      patchTaskInTaskCaches(queryClient, teamId, task!.id, { isCompleted });
       onTaskUpdated?.({ id: task!.id, isCompleted });
-      return { previousInboxTasks, previousCalendarItems };
+      return { previous };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.previousInboxTasks) {
-        queryClient.setQueryData(['inbox-tasks'], ctx.previousInboxTasks);
+      if (ctx?.previous) {
+        restoreTaskCaches(queryClient, ctx.previous);
       }
-      ctx?.previousCalendarItems?.forEach(([key, data]) => {
-        queryClient.setQueryData(key, data);
-      });
       toast.error('Nie udało się zaktualizować statusu zadania');
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['inbox-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 

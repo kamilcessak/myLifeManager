@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore';
 import { ThemeMode, useTheme } from '../context/ThemeContext';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import SearchBar from './SearchBar';
+import WorkspaceSwitcher from './layout/WorkspaceSwitcher';
 
 interface LayoutProps {
   children: ReactNode;
@@ -57,11 +58,12 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </div>
 
-        <div className="flex-1 flex justify-center px-2">
+        <div className="flex min-w-0 flex-1 justify-center px-2">
           <SearchBar />
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+          <WorkspaceSwitcher />
           {permission !== 'unsupported' && (
             <button
               onClick={isSubscribed ? unsubscribe : subscribe}

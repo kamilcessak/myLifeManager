@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus,
   MoreHorizontal,
@@ -17,6 +17,10 @@ import {
 } from 'lucide-react';
 import { tasksApi, categoriesApi } from '../lib/api';
 import { Task, Category } from '../types';
+import { useCategories } from '../hooks/useCategories';
+import { useTasks } from '../hooks/useTasks';
+import { useWorkspaceStore } from '../store/useWorkspaceStore';
+import { patchTaskInTaskCaches, snapshotTaskCaches, restoreTaskCaches } from '../lib/workspaceTaskCache';
 import TaskCard from './TaskCard';
 import TaskModal from './TaskModal';
 import EventModal from './EventModal';
@@ -64,23 +68,8 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
 
   const queryClient = useQueryClient();
 
-  // Fetch categories
-  const { data: categoriesData } = useQuery({
-    queryKey: ['categories'],
-    queryFn: async () => {
-      const response = await categoriesApi.getAll();
-      return response.data.data.categories as Category[];
-    },
-  });
-
-  // Fetch inbox tasks
-  const { data: tasksData, isLoading } = useQuery({
-    queryKey: ['inbox-tasks'],
-    queryFn: async () => {
-      const response = await tasksApi.getInbox();
-      return response.data.data.tasks as Task[];
-    },
-  });
+  const { data: categoriesData } = useCategories();
+  const { data: tasksData, isLoading } = useTasks({ scope: 'inbox' });
 
   // Toggle task completion
   const toggleCompleteMutation = useMutation({
@@ -90,8 +79,7 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
       toast.error('Nie udało się zaktualizować zadania');
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['inbox-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 
@@ -111,49 +99,16 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
 
   const handleToggleComplete = (taskId: string, currentStatus: boolean) => {
     const nextIsCompleted = !currentStatus;
-    const previousInboxTasks = queryClient.getQueryData<Task[]>(['inbox-tasks']);
-    const previousCalendarItems = queryClient.getQueriesData({ queryKey: ['calendar-items'] });
+    const teamId = useWorkspaceStore.getState().activeWorkspaceId;
+    const previous = snapshotTaskCaches(queryClient, teamId);
 
-    queryClient.setQueryData<Task[]>(['inbox-tasks'], (old = []) =>
-      old.map((task) => (
-        task.id === taskId
-          ? {
-              ...task,
-              isCompleted: nextIsCompleted,
-            }
-          : task
-      ))
-    );
-
-    queryClient.setQueriesData({ queryKey: ['calendar-items'] }, (oldData: any) => {
-      if (!Array.isArray(oldData)) {
-        return oldData;
-      }
-
-      return oldData.map((item: any) => {
-        if (item?.type !== 'task' || item?.data?.id !== taskId) {
-          return item;
-        }
-
-        return {
-          ...item,
-          data: {
-            ...item.data,
-            isCompleted: nextIsCompleted,
-          },
-          classNames: ['fc-event-task', nextIsCompleted ? 'fc-event-task-completed' : ''].filter(Boolean),
-        };
-      });
-    });
+    patchTaskInTaskCaches(queryClient, teamId, taskId, { isCompleted: nextIsCompleted });
 
     toggleCompleteMutation.mutate(
       { id: taskId, isCompleted: nextIsCompleted },
       {
         onError: () => {
-          queryClient.setQueryData(['inbox-tasks'], previousInboxTasks || []);
-          previousCalendarItems.forEach(([queryKey, queryData]) => {
-            queryClient.setQueryData(queryKey, queryData);
-          });
+          restoreTaskCaches(queryClient, previous);
         },
       }
     );
@@ -531,7 +486,7 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
             categories={categories}
             onClose={() => setIsCategoryManagerOpen(false)}
           />,
-          document.body
+          document.body,
         )}
     </div>
   );
@@ -545,6 +500,7 @@ interface CategoryManagerModalProps {
 function CategoryManagerModal({ categories, onClose }: CategoryManagerModalProps) {
   useEscapeToClose(onClose);
   const queryClient = useQueryClient();
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState('#3b82f6');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -553,12 +509,16 @@ function CategoryManagerModal({ categories, onClose }: CategoryManagerModalProps
 
   const invalidateData = () => {
     queryClient.invalidateQueries({ queryKey: ['categories'] });
-    queryClient.invalidateQueries({ queryKey: ['inbox-tasks'] });
-    queryClient.invalidateQueries({ queryKey: ['calendar-items'] });
+    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    queryClient.invalidateQueries({ queryKey: ['events'] });
   };
 
   const createCategoryMutation = useMutation({
-    mutationFn: (data: { name: string; color: string }) => categoriesApi.create(data),
+    mutationFn: (data: { name: string; color: string }) =>
+      categoriesApi.create({
+        ...data,
+        ...(activeWorkspaceId ? { teamId: activeWorkspaceId } : {}),
+      }),
     onSuccess: () => {
       invalidateData();
       setNewName('');
