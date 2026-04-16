@@ -5,6 +5,7 @@ import { prisma } from '../config/database.js';
 import { requireAuth } from '../middleware/auth.js';
 import { ApiError } from '../middleware/errorHandler.js';
 import { attachmentsUpload } from '../config/multerAttachments.js';
+import { verifyTeamAccess } from '../utils/teamAccess.js';
 
 const router = Router();
 
@@ -12,10 +13,33 @@ router.use(requireAuth);
 
 const uploadsDir = path.join(process.cwd(), 'uploads');
 
+const safeUnlink = (filePath: string) => {
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch (e) {
+    console.error('[attachments] unlink', e);
+  }
+};
+
+const assertResourceAccess = async (
+  resource: { userId: string; teamId: string | null },
+  currentUserId: string,
+): Promise<void> => {
+  if (resource.teamId === null) {
+    if (resource.userId !== currentUserId) {
+      throw new ApiError('Brak dostępu', 403);
+    }
+    return;
+  }
+  await verifyTeamAccess(currentUserId, resource.teamId);
+};
+
 router.post(
   '/upload',
   attachmentsUpload.single('file'),
   async (req: Request, res: Response, next: NextFunction) => {
+    const uploadedFilePath = req.file ? path.join(uploadsDir, req.file.filename) : null;
+
     try {
       if (!req.file) {
         throw new ApiError('Nie przesłano pliku', 400);
@@ -31,22 +55,28 @@ router.post(
         throw new ApiError('Podaj taskId lub eventId (najpierw utwórz zadanie lub wydarzenie)', 400);
       }
 
+      const currentUserId = req.user!.id;
+
       if (taskId) {
-        const task = await prisma.task.findFirst({
-          where: { id: taskId, userId: req.user!.id },
+        const task = await prisma.task.findUnique({
+          where: { id: taskId },
+          select: { userId: true, teamId: true },
         });
         if (!task) {
           throw new ApiError('Zadanie nie istnieje', 404);
         }
+        await assertResourceAccess(task, currentUserId);
       }
 
       if (eventId) {
-        const event = await prisma.event.findFirst({
-          where: { id: eventId, userId: req.user!.id },
+        const event = await prisma.event.findUnique({
+          where: { id: eventId },
+          select: { userId: true, teamId: true },
         });
         if (!event) {
           throw new ApiError('Wydarzenie nie istnieje', 404);
         }
+        await assertResourceAccess(event, currentUserId);
       }
 
       const publicUrl = `/uploads/${req.file.filename}`;
@@ -68,6 +98,9 @@ router.post(
         data: { attachment },
       });
     } catch (error) {
+      if (uploadedFilePath) {
+        safeUnlink(uploadedFilePath);
+      }
       next(error);
     }
   },
@@ -75,11 +108,11 @@ router.post(
 
 router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const attachment = await prisma.attachment.findFirst({
+    const attachment = await prisma.attachment.findUnique({
       where: { id: req.params.id },
       include: {
-        task: { select: { userId: true } },
-        event: { select: { userId: true } },
+        task: { select: { userId: true, teamId: true } },
+        event: { select: { userId: true, teamId: true } },
       },
     });
 
@@ -87,25 +120,23 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
       throw new ApiError('Załącznik nie istnieje', 404);
     }
 
-    const uid = req.user!.id;
+    const currentUserId = req.user!.id;
+
     if (attachment.taskId) {
-      if (attachment.task?.userId !== uid) {
-        throw new ApiError('Brak dostępu', 403);
+      if (!attachment.task) {
+        throw new ApiError('Zadanie nie istnieje', 404);
       }
+      await assertResourceAccess(attachment.task, currentUserId);
     } else if (attachment.eventId) {
-      if (attachment.event?.userId !== uid) {
-        throw new ApiError('Brak dostępu', 403);
+      if (!attachment.event) {
+        throw new ApiError('Wydarzenie nie istnieje', 404);
       }
-    } else if (attachment.userId !== uid) {
+      await assertResourceAccess(attachment.event, currentUserId);
+    } else if (attachment.userId !== currentUserId) {
       throw new ApiError('Brak dostępu', 403);
     }
 
-    const fp = path.join(uploadsDir, attachment.filename);
-    try {
-      if (fs.existsSync(fp)) fs.unlinkSync(fp);
-    } catch (e) {
-      console.error('[attachments] unlink', e);
-    }
+    safeUnlink(path.join(uploadsDir, attachment.filename));
 
     await prisma.attachment.delete({ where: { id: attachment.id } });
 

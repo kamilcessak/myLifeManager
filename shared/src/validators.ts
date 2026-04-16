@@ -99,6 +99,25 @@ export const joinTeamSchema = z.object({
   code: z.string().min(1, 'Kod zaproszenia jest wymagany'),
 });
 
+// ==================== SEARCH ====================
+export const searchResultItemSchema = z.object({
+  id: z.string(),
+  type: z.enum(['task', 'event']),
+  title: z.string(),
+  description: z.string().nullable(),
+  date: z.string().datetime(),
+  teamId: z.string().nullable(),
+  teamName: z.string().optional(),
+});
+
+export const searchResponseSchema = z.object({
+  results: z.array(searchResultItemSchema),
+});
+
+export const searchQuerySchema = z.object({
+  q: z.string().optional(),
+});
+
 // Type exports
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -115,3 +134,6 @@ export type GetCategoriesQuery = z.infer<typeof getCategoriesQuerySchema>;
 export type CreateTeamInput = z.infer<typeof createTeamSchema>;
 export type InviteMembersInput = z.infer<typeof inviteMembersSchema>;
 export type JoinTeamInput = z.infer<typeof joinTeamSchema>;
+export type SearchQuery = z.infer<typeof searchQuerySchema>;
+export type SearchResultItemSchema = z.infer<typeof searchResultItemSchema>;
+export type SearchResponseSchema = z.infer<typeof searchResponseSchema>;

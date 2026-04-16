@@ -118,6 +118,34 @@ export interface CalendarItem {
   classNames?: string[];
 }
 
+// ==================== SEARCH ====================
+export type SearchResultType = 'task' | 'event';
+
+export interface SearchResultItem {
+  id: string;
+  type: SearchResultType;
+  title: string;
+  description: string | null;
+  /** ISO 8601 date string */
+  date: string;
+  /**
+   * Workspace the item belongs to.
+   * - `null` for personal items (no team).
+   * - `string` (team id) for items owned by a team the user is a member of.
+   */
+  teamId: string | null;
+  /**
+   * Display name of the team workspace.
+   * - `undefined` for personal items.
+   * - `string` (team name) for team items.
+   */
+  teamName?: string;
+}
+
+export interface SearchResponse {
+  results: SearchResultItem[];
+}
+
 // ==================== API RESPONSES ====================
 export interface ApiResponse<T> {
   status: 'success' | 'error';

@@ -85,10 +85,3 @@ export interface CalendarItem {
   classNames?: string[];
 }
 
-export interface SearchResult {
-  id: string;
-  type: "task" | "event";
-  title: string;
-  description: string | null;
-  date: string;
-}

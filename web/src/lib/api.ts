@@ -1,6 +1,11 @@
 import axios from "axios";
-import type { Team, TeamInvitation, TeamRole } from "shared";
-import { SearchResult, type Attachment } from "../types";
+import type {
+  SearchResultItem as SearchResult,
+  Team,
+  TeamInvitation,
+  TeamRole,
+} from "shared";
+import { type Attachment } from "../types";
 import { clearClientSession } from "./clearClientSession";
 
 export type TeamMemberApiRow = {
