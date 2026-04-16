@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, Mail, User, X, ImagePlus, Trash2 } from 'lucide-react';
+import { Loader2, Mail, User, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { updateProfileSchema } from 'shared';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
@@ -10,6 +10,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useUpdateProfile } from '../../hooks/useUpdateProfile';
 import { Button } from '@/components/ui/button';
 import { getApiErrorMessage } from '@/lib/apiErrors';
+import AvatarUploader from './AvatarUploader';
 
 type ProfileFormValues = z.infer<typeof updateProfileSchema>;
 
@@ -17,9 +18,6 @@ interface ProfileSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-const MAX_AVATAR_SIZE_MB = 5;
-const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
 function getInitials(name?: string | null, email?: string | null): string {
   const source = (name?.trim() || email?.trim() || '').trim();
@@ -38,10 +36,7 @@ export default function ProfileSettingsModal({
   useEscapeToClose(onClose, isOpen);
   const user = useAuthStore((s) => s.user);
   const updateProfile = useUpdateProfile();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const {
@@ -63,58 +58,14 @@ export default function ProfileSettingsModal({
         name: user?.name ?? '',
         avatarUrl: user?.avatarUrl ?? '',
       });
-      setAvatarFile(null);
-      setAvatarPreview(null);
       setFormError(null);
     }
   }, [isOpen, user, reset]);
 
-  useEffect(() => {
-    if (!avatarFile) {
-      setAvatarPreview(null);
-      return;
-    }
-    const objectUrl = URL.createObjectURL(avatarFile);
-    setAvatarPreview(objectUrl);
-    return () => {
-      URL.revokeObjectURL(objectUrl);
-    };
-  }, [avatarFile]);
-
-  const displayedAvatar = avatarPreview ?? user?.avatarUrl ?? null;
   const initials = useMemo(
     () => getInitials(user?.name, user?.email),
     [user?.name, user?.email],
   );
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setFormError(null);
-    const file = event.target.files?.[0] ?? null;
-    if (!file) {
-      setAvatarFile(null);
-      return;
-    }
-
-    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
-      setFormError('Obsługiwane formaty to JPEG, PNG, GIF lub WebP.');
-      event.target.value = '';
-      return;
-    }
-    if (file.size > MAX_AVATAR_SIZE_MB * 1024 * 1024) {
-      setFormError(`Plik jest zbyt duży. Maksymalny rozmiar to ${MAX_AVATAR_SIZE_MB} MB.`);
-      event.target.value = '';
-      return;
-    }
-
-    setAvatarFile(file);
-  };
-
-  const handleRemoveSelectedAvatar = () => {
-    setAvatarFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
 
   const onSubmit = handleSubmit((values) => {
     setFormError(null);
@@ -123,16 +74,13 @@ export default function ProfileSettingsModal({
     const currentName = user?.name ?? '';
     const nameChanged = trimmedName.length > 0 && trimmedName !== currentName;
 
-    if (!nameChanged && !avatarFile) {
+    if (!nameChanged) {
       onClose();
       return;
     }
 
     updateProfile.mutate(
-      {
-        name: nameChanged ? trimmedName : undefined,
-        avatarFile,
-      },
+      { name: trimmedName },
       {
         onSuccess: () => {
           toast.success('Profil został zaktualizowany');
@@ -175,60 +123,11 @@ export default function ProfileSettingsModal({
         </div>
 
         <form onSubmit={onSubmit} className="space-y-5 px-5 py-5">
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              {displayedAvatar ? (
-                <img
-                  src={displayedAvatar}
-                  alt="Avatar"
-                  className="h-20 w-20 rounded-full border border-[var(--app-border)] object-cover"
-                />
-              ) : (
-                <div className="flex h-20 w-20 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-surface-muted)] text-xl font-semibold text-[var(--app-text-muted)]">
-                  {initials}
-                </div>
-              )}
-            </div>
-            <div className="flex flex-1 flex-col gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={ACCEPTED_IMAGE_TYPES.join(',')}
-                onChange={handleFileChange}
-                className="hidden"
-                id="profile-avatar-input"
-                disabled={isSaving}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                className="justify-start gap-2"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isSaving}
-              >
-                <ImagePlus className="h-4 w-4" />
-                {avatarFile ? 'Zmień plik' : 'Wybierz avatar'}
-              </Button>
-              {avatarFile ? (
-                <div className="flex items-center justify-between gap-2 text-xs text-[var(--app-text-muted)]">
-                  <span className="truncate">{avatarFile.name}</span>
-                  <button
-                    type="button"
-                    onClick={handleRemoveSelectedAvatar}
-                    disabled={isSaving}
-                    className="flex items-center gap-1 rounded-md px-2 py-1 text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-500/10"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Usuń
-                  </button>
-                </div>
-              ) : (
-                <p className="text-xs text-[var(--app-text-muted)]">
-                  JPEG, PNG, GIF lub WebP. Max {MAX_AVATAR_SIZE_MB} MB.
-                </p>
-              )}
-            </div>
-          </div>
+          <AvatarUploader
+            currentAvatarUrl={user?.avatarUrl ?? null}
+            initials={initials}
+            disabled={isSaving}
+          />
 
           <div>
             <label
@@ -292,7 +191,7 @@ export default function ProfileSettingsModal({
             <Button
               type="submit"
               className="border-0 bg-blue-500 text-white shadow-sm hover:bg-blue-600"
-              disabled={isSaving || (!isDirty && !avatarFile)}
+              disabled={isSaving || !isDirty}
             >
               {isSaving ? (
                 <>

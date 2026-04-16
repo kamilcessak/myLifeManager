@@ -74,6 +74,25 @@ export const authApi = {
         };
       };
     }>("/auth/me", data),
+  uploadAvatar: (file: File | Blob, filename = "avatar.jpg") => {
+    const formData = new FormData();
+    const blobFile =
+      file instanceof File ? file : new File([file], filename, { type: file.type || "image/jpeg" });
+    formData.append("avatar", blobFile);
+    return api.post<{
+      status: string;
+      data: {
+        user: {
+          id: string;
+          email: string;
+          name: string | null;
+          avatarUrl: string | null;
+          createdAt: string;
+        };
+        avatarUrl: string | null;
+      };
+    }>("/auth/avatar", formData);
+  },
 };
 
 // Teams
