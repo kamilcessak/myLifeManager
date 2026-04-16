@@ -18,6 +18,7 @@
    - [Zespoły i Obszary robocze (Workspaces)](#311-zespoły-i-obszary-robocze-workspaces)
    - [Przypisywanie osób (Assignee / cowork)](#31110-przypisywanie-osób-assignee--cowork)
    - [Ustawienia profilu (Profile Settings)](#312-ustawienia-profilu-profile-settings)
+   - [Historia zmian zadań (Activity Log)](#313-historia-zmian-zadań-activity-log)
 4. [Model danych](#4-model-danych)
 5. [Frontend — widoki i komponenty](#5-frontend--widoki-i-komponenty)
 6. [Pakiet współdzielony (shared)](#6-pakiet-współdzielony-shared)
@@ -99,22 +100,24 @@ Główna jednostka pracy użytkownika. Zadania mogą być w "skrzynce odbiorczej
 
 | Endpoint | Metoda | Opis |
 |----------|--------|------|
-| `/api/tasks` | GET | Lista zadań z filtrami: `categoryId`, `isCompleted`, `scheduled` (boolean), `startDate`/`endDate`. Złożona logika filtrowania — zadania zaplanowane, zadania ze skrzynki, zadania z deadlinem w zakresie dat. |
-| `/api/tasks/inbox` | GET | Zadania ze skrzynki: niezakończone **lub** zakończone w ciągu ostatnich 7 dni. Opcjonalny filtr `categoryId`. |
-| `/api/tasks/:id` | GET | Szczegóły pojedynczego zadania (z kategorią i załącznikami). |
-| `/api/tasks` | POST | Tworzenie zadania. Obsługuje: tytuł, opis, priorytet (1–4), kategorię, harmonogram (`scheduledStart`/`scheduledEnd`/`scheduledAllDay`), deadline, regułę cykliczności, przypomnienie (`reminderMinutes`). |
-| `/api/tasks/:id` | PATCH | Aktualizacja zadania. Oznaczenie jako ukończone ustawia `completedAt`. Zmiana harmonogramu/deadline/przypomnienia resetuje flagę `reminderSent`. |
+| `/api/tasks` | GET | Lista zadań z filtrami: `categoryId`, `assigneeId`, `isCompleted`, `scheduled` (boolean), `startDate`/`endDate`, `teamId`. Złożona logika filtrowania — zadania zaplanowane, zadania ze skrzynki, zadania z deadlinem w zakresie dat. Gdy podano zakres `startDate`/`endDate` i `scheduled !== 'false'`, zadania z `recurrenceRule` są rozwijane do **syntetycznych instancji RRULE** (analogicznie do wydarzeń). |
+| `/api/tasks/inbox` | GET | Zadania ze skrzynki: niezakończone **lub** zakończone w ciągu ostatnich 7 dni. Opcjonalne filtry `categoryId`, `teamId`, `assigneeId`. |
+| `/api/tasks/:id` | GET | Szczegóły pojedynczego zadania (z kategorią, załącznikami i assignee). |
+| `/api/tasks/:id/activity` | GET | Historia zmian zadania (activity log). Zwraca listę wpisów `ActivityLog` w kolejności malejącej po dacie, z zagnieżdżonym użytkownikiem (`id`, `name`, `avatarUrl`). Autoryzacja analogiczna do `GET /tasks/:id` — weryfikacja przynależności do workspace'a. Szczegóły w sekcji 3.13. |
+| `/api/tasks` | POST | Tworzenie zadania. Obsługuje: tytuł, opis, priorytet (1–4), kategorię, harmonogram (`scheduledStart`/`scheduledEnd`/`scheduledAllDay`), deadline, regułę cykliczności (walidowaną przez `RRule.fromString` — błąd składni → `400 "Invalid recurrence rule format"`), przypomnienie (`reminderMinutes`), przypisanie (`assigneeId`). Transakcyjnie loguje wpis `CREATED` do `ActivityLog`. |
+| `/api/tasks/:id` | PATCH | Aktualizacja zadania. Oznaczenie jako ukończone ustawia `completedAt`. Zmiana harmonogramu/deadline/przypomnienia resetuje flagę `reminderSent`. Aktualizacja `recurrenceRule` również walidowana przez `RRule.fromString`. Transakcyjnie loguje do `ActivityLog` wpisy `UPDATED_STATUS`, `CHANGED_ASSIGNEE`, `CHANGED_DEADLINE` gdy odpowiednie pole faktycznie się zmieniło. |
 | `/api/tasks/:id/schedule` | PATCH | Zaplanowanie zadania na konkretny termin (scheduledStart + scheduledEnd). Używane przy drag & drop z inbox na kalendarz. |
 | `/api/tasks/:id/unschedule` | PATCH | Usunięcie zaplanowania — przeniesienie zadania z powrotem do skrzynki. |
 | `/api/tasks/:id` | DELETE | Usunięcie zadania. |
 
 **Cechy zadań**:
 - **Priorytety**: 4 poziomy (1–4) z kolorowymi oznaczeniami
-- **Cykliczność**: Reguły RRULE do definiowania powtarzających się zadań
+- **Cykliczność**: Reguły RRULE do definiowania powtarzających się zadań. Walidacja po stronie API (`RRule.fromString`) przy CREATE i UPDATE. Endpoint `GET /tasks` zwraca **syntetyczne instancje** z ID `${originalTaskId}_${index}`, polem `originalTaskId` i flagą `isRecurringInstance` (analogicznie do eventów). Rozwijanie odbywa się tylko gdy podano zakres dat i `scheduled !== 'false'`; wymaga obecności `scheduledStart` jako anchora dla RRULE. Scalony wynik jest sortowany po `priority DESC`, następnie `deadline ASC`, następnie `createdAt DESC`
 - **Deadline**: Opcjonalny termin ostateczny z wizualnym podkreśleniem
 - **Przypomnienia**: Konfigurowalny czas przed terminem (w minutach)
 - **Całodniowe**: Flaga `scheduledAllDay` do planowania zadań na cały dzień
 - **Załączniki**: Możliwość dodawania plików (obrazy, PDF)
+- **Historia zmian**: Każda istotna modyfikacja (status, assignee, deadline) zapisywana w `ActivityLog` w tej samej transakcji co `UPDATE` — zob. sekcja 3.13
 
 ---
 
@@ -179,11 +182,12 @@ Globalna, **cross-workspace** wyszukiwarka z poziomu nagłówka aplikacji — je
 
 | Endpoint | Metoda | Opis |
 |----------|--------|------|
-| `/api/search` | GET | Wyszukiwanie po parametrze `q`. Case-insensitive `contains` na tytule i opisie. Filtr workspace: `(userId = me AND teamId IS NULL) OR teamId IN (moje zespoły)`. Zwraca zadania (max 10) i wydarzenia (max 10) z polami `teamId` i `teamName`, scala wyniki, sortuje po dacie, zwraca **top 10**. |
+| `/api/search` | GET | Wyszukiwanie po parametrze `q`. Case-insensitive `contains` na tytule i opisie. Filtr workspace: `(userId = me AND teamId IS NULL) OR teamId IN (moje zespoły)`. Zwraca zadania (max 10) i wydarzenia (max 10) z polami `teamId`, `teamName` oraz zagnieżdżonym `assignee: { id, name, email, avatarUrl } | null` (pobieranym przez `select`), scala wyniki, sortuje po dacie, zwraca **top 10**. |
 
 **Cechy wyszukiwarki**:
 - **Cross-workspace**: Wyniki obejmują jednocześnie workspace osobisty i wszystkie zespoły użytkownika, niezależnie od aktywnego workspace'a — ułatwia szybkie wyszukanie elementu bez ręcznego przełączania kontekstu
 - **Workspace badge**: Każdy wynik oznaczony etykietą z ikoną (User dla osobistych, Building2 dla zespołów) i nazwą workspace'a. Elementy z obcego workspace'a (innego niż aktywny) mają dodatkowy akcent amber i obramowanie sygnalizujące zmianę kontekstu po kliknięciu
+- **Assignee w wyniku**: Każdy wynik wyświetla również `AssigneeAvatar` przypisanej osoby (`size="xs"`) obok tytułu, jeśli zadanie/wydarzenie jest przypisane. Pozwala szybko zidentyfikować właściciela bez otwierania modala
 - **Auto-switch kontekstu**: Kliknięcie wyniku z innego workspace'a automatycznie przełącza `activeWorkspaceId` w `useWorkspaceStore` (z toastem "Przełączono na: …") — dzięki temu modal edycji i wszystkie zależne hooki React Query dostają poprawny `teamId` w query keys
 - **Skrót klawiaturowy**: Ctrl/Cmd+K otwiera wyszukiwarkę
 - **Debounce**: Opóźnione zapytanie, by nie obciążać API przy każdym naciśnięciu klawisza
@@ -207,7 +211,7 @@ System plików powiązanych z zadaniami lub wydarzeniami.
 - **Limity**: Zdefiniowane w shared/constants (rozmiar pliku i dozwolone typy MIME)
 - **Autoryzacja workspace-aware**: Helper `assertResourceAccess(resource, userId)` — dla zadania/wydarzenia z `teamId === null` wymaga zgodności `userId`, dla `teamId !== null` deleguje do `verifyTeamAccess`. Zapobiega cross-workspace dostępowi do załączników zespołowych
 - **Cleanup on failure**: Plik fizyczny jest usuwany (`safeUnlink`) z dysku jeśli walidacja / DB insert się nie powiodły — zapobiega zalewaniu uploadsów osieroconymi plikami
-- **Pending uploads**: Schema bazy danych obsługuje załączniki "oczekujące" (`userId` + `expiresAt`), ale **ta ścieżka nie jest w pełni zaimplementowana**
+- **Pending uploads**: Schema bazy danych obsługuje załączniki "oczekujące" (`userId` + `expiresAt`). Ścieżka uploadu pending nie jest jeszcze eksponowana przez API, ale **cron czyszczący wygasłe rekordy jest aktywny** — `startAttachmentCleanupCron` (zob. sekcja 3.9)
 
 ---
 
@@ -246,6 +250,12 @@ Automatyczny system przypomnień i harmonogramowych zadań housekeepingu działa
 - **Harmonogram**: Raz dziennie o północy czasu serwera (`'0 0 * * *'`), plus jednokrotne uruchomienie przy starcie procesu (żeby nie przenosić przeterminowanych rekordów między deploymentami)
 - **Logika**: `deleteMany` wszystkich rekordów `TeamInvitation` ze statusem `PENDING` i `expiresAt < now()`. Zaproszenia ze statusem `ACCEPTED` pozostają jako historyczny ślad (trail)
 - **Izolacja błędów**: Błędy logowane do konsoli, nie przerywają działania serwera
+
+**Attachment cleanup cron** (`startAttachmentCleanupCron`):
+- **Harmonogram**: Co godzinę o minucie 0 (`'0 * * * *'`), plus jednokrotne uruchomienie przy starcie procesu (czyści "osierocone" pliki z czasu gdy serwer nie pracował)
+- **Logika**: `findMany` załączników spełniających warunek `taskId = null AND eventId = null AND expiresAt < now()` → dla każdego: `safeUnlink(UPLOAD_DIR/filename)` → `prisma.attachment.delete`. Katalog uploadsów pobierany z `process.env.UPLOAD_DIR` z fallbackiem na `path.join(process.cwd(), 'uploads')`
+- **Izolacja błędów**: Każdy rekord przetwarzany w osobnym `try/catch`. `safeUnlink` toleruje brak pliku, dzięki czemu stale rekordy DB i tak są usuwane. Liczba realnie usuniętych wpisów logowana (`deletedCount`)
+- **Cel**: Zapobieganie zaleganiu "pending" uploadsów w filesystemie i bazie (schemat `Attachment.userId` + `Attachment.expiresAt` istnieje od dawna, ale dotychczas nie miał dedykowanego housekeepingu)
 
 ---
 
@@ -470,11 +480,38 @@ Mechanizm delegowania zadań i wydarzeń konkretnemu członkowi zespołu. Stanow
 
 **Workspace change auto-nullification**: Przy UPDATE, jeśli `teamId` się zmienia i wywołujący nie podał `assigneeId`, istniejący `assigneeId` jest re-walidowany w kontekście **nowego** workspace'a. Jeśli dotychczasowy assignee nie należy do nowego zespołu — jest automatycznie ustawiany na `null` (zamiast błędu).
 
-**Domyślne wartości**:
-- `EventController.createEvent`: jeśli `assigneeId` nie został podany, domyślnie ustawiany jest **acting user** (twórca). Odzwierciedla intuicję "moje wydarzenie, chyba że inaczej zaznaczę"
-- `TaskController.createTask`: brak domyślnego assignee — zadanie bez przypisania pozostaje niezaprzypisane
+**Ujednolicona polityka domyślnych wartości** (taka sama w `TaskController.createTask` i `EventController.createEvent`):
+- `assigneeId` nie podany i **workspace osobisty** (`teamId === null`) → assignee = twórca (`userId`). Intuicja "moje zadanie/wydarzenie, chyba że inaczej zaznaczę"
+- `assigneeId` nie podany i **workspace zespołowy** (`teamId !== null`) → assignee = `null` (nieprzypisane). Intuicja "w zespole muszę jawnie wskazać odbiorcę"
+- `assigneeId === null` przekazany jawnie → explicit unassign (w obu workspace'ach pozostaje `null`, jeśli walidacja przejdzie)
+- `assigneeId` z konkretną wartością → walidacja przez `resolveAssigneeId` (personal: musi być self; team: musi być członkiem)
 
-**Payload odpowiedzi**: Endpoints `GET/POST/PATCH /tasks/*` i `/events/*` dołączają zagnieżdżone pole `assignee: { id, name, avatarUrl, email } | null` (select przez relację) — pozwala wyświetlić avatar i dane bez dodatkowego zapytania o użytkownika.
+Wcześniej `EventController` domyślnie przypisywał do twórcy również w workspace zespołowym, a `TaskController` zostawiał `null` — nowa polityka usuwa tę niespójność.
+
+**Filtr `assigneeId` (API)**:
+- `GET /api/tasks?assigneeId=<userId>` — zawęża wynik do zadań z tym `assigneeId`. Wspierany również przez oddział recurring-expansion (filtr stosowany też do recurringów rozwijanych do instancji)
+- `GET /api/tasks/inbox?assigneeId=<userId>` — analogicznie dla skrzynki
+- `GET /api/events?assigneeId=<userId>` — zarówno dla `nonRecurring`, jak i `recurringWithinRange`
+- `dateRangeQuerySchema`, `taskQuerySchema` w `shared/validators.ts` rozszerzone o `assigneeId: z.string().optional()`
+
+**Frontend — filtr "Tylko moje przypisania"**:
+
+| Element | Plik | Opis |
+|---------|------|------|
+| `useAssigneeFilterStore` | `store/useAssigneeFilterStore.ts` | Zustand + `persist` (klucz `mlm-assignee-filter`). Stan `onlyMine: boolean`, akcje `setOnlyMine`, `toggleOnlyMine`. Persystowany w localStorage między sesjami |
+| `AssigneeFilterToggle` | `components/AssigneeFilterToggle.tsx` | Pill-button z ikoną `UserCheck` i rolą `switch` (ARIA). Widoczny **wyłącznie** w workspace zespołowym (`activeWorkspaceId !== null`) — w workspace osobistym każde zadanie jest implicite moje, więc toggle nie miałby znaczenia. Dwa warianty: `default` ("Tylko moje przypisania") i `compact` ("Moje") |
+| Integracja w `Layout` | header | `<AssigneeFilterToggle variant="compact" />` obok `WorkspaceSwitcher` |
+| Integracja w `TaskInbox` | | `<AssigneeFilterToggle />` (wariant default) nad zakładkami kategorii |
+| Hooki danych (`useTasks`, `useEvents`) | | Obliczają `assigneeId = activeWorkspaceId !== null && onlyMine ? currentUserId : null`. W workspace osobistym flaga jest ignorowana — query key pozostaje stabilny, nie ma zbędnego refetch'a przy toggle'owaniu w personalu |
+
+**Query keys rozszerzone o `assigneeId`** (`lib/queryKeys.ts`):
+- `tasksInbox(teamId, assigneeId)` → `['tasks', teamId, 'inbox', { assigneeId }]`
+- `tasksScheduled(teamId, start, end, assigneeId)` → `['tasks', teamId, 'scheduled', start, end, { assigneeId }]`
+- `events(teamId, start, end, assigneeId)` → `['events', teamId, start, end, { assigneeId }]`
+
+Dzięki temu cache nie kłoci się z widokiem "wszystkich" zadań/wydarzeń w tym samym workspace.
+
+**Payload odpowiedzi**: Endpoints `GET/POST/PATCH /tasks/*` i `/events/*` dołączają zagnieżdżone pole `assignee: { id, name, avatarUrl, email } | null` (select przez relację) — pozwala wyświetlić avatar i dane bez dodatkowego zapytania o użytkownika. **`GET /api/search`** również zwraca teraz `assignee` w każdym wyniku (`SearchResultItem.assignee?: Pick<User, 'id' | 'name' | 'email' | 'avatarUrl'> | null`).
 
 **Frontend — komponent `AssigneeAvatar`** (`components/AssigneeAvatar.tsx`):
 - Wyświetla avatar użytkownika (jeśli `avatarUrl`) z fallbackiem na inicjał (pierwsza litera imienia lub emaila) na niebieskim tle
@@ -547,6 +584,82 @@ Dzieli się na dwie sekcje:
 - **Mechanizm potwierdzenia**: użytkownik musi wpisać frazę `USUŃ` (case-insensitive, trim). Przycisk potwierdzenia aktywny tylko gdy fraza się zgadza i mutacja nie jest in-flight
 - Po sukcesie: `authStore.logout()`, `clearClientSession()`, twardy redirect `window.location.href = '/login'` — wymuszenie zrzutu wszystkich in-memory cache, listenerów i service workera
 - **Obsługa błędu "solo-owner"**: komunikat z backendu (lista zespołów, w których użytkownik jest jedynym OWNER z innymi członkami) jest wyświetlany w boxie alert w modalu
+
+---
+
+### 3.13 Historia zmian zadań (Activity Log)
+
+Wbudowany mechanizm audytu zmian w zadaniach. Szczególnie istotny w workspace'ach zespołowych (kto zmienił termin, kto przypisał zadanie), ale logi powstają również dla zadań osobistych — model jest workspace-agnostic.
+
+#### 3.13.1 Model `ActivityLog`
+
+Nowy model Prisma + migracja `20260416185548_add_activity_logs/migration.sql`:
+
+| Pole | Typ | Opis |
+|------|-----|------|
+| id | String (cuid) | Identyfikator |
+| taskId | String | FK do Task (Cascade delete — usunięcie zadania usuwa historię) |
+| userId | String | FK do User (Cascade) — autor zmiany |
+| action | String | Typ akcji (`CREATED`, `UPDATED_STATUS`, `CHANGED_ASSIGNEE`, `CHANGED_DEADLINE`, ...) |
+| oldValue | String? | Poprzednia wartość (zserializowana do stringa lub ISO datetime) |
+| newValue | String? | Nowa wartość |
+| createdAt | DateTime (default now) | Znacznik czasu wpisu |
+| @@index | `(taskId, createdAt)` | Szybkie pobranie timeline'u zadania |
+| @@index | `(userId)` | Możliwość zapytań "co zrobiłem w systemie" |
+
+Nowa relacja wsteczna w modelach: `User.activityLogs`, `Task.activityLogs`.
+
+#### 3.13.2 Helper `logActivity()`
+
+Funkcja w `taskController.ts`:
+- Akceptuje `PrismaTxClient` (typeof `Prisma.TransactionClient | prisma`) — zamierzona praca wewnątrz `prisma.$transaction`, co gwarantuje atomowość zapisu zadania i wpisu logu (brak rozjazdu w przypadku rollbacku)
+- **Best-effort**: Wewnętrzny `try/catch` — błąd zapisu loga jest logowany do konsoli, ale **nigdy** nie wraca do klienta jako błąd API. Audyt nie może przerwać głównej operacji
+- Dostępny typ publiczny `ActivityLogAction = 'CREATED' | 'UPDATED_STATUS' | 'CHANGED_ASSIGNEE' | 'CHANGED_DEADLINE'`
+
+#### 3.13.3 Miejsca logowania
+
+| Akcja | Kontroler | Diff warunek | oldValue → newValue |
+|-------|-----------|--------------|----------------------|
+| `CREATED` | `createTask` | zawsze po `prisma.task.create` w transakcji | `null` → `task.title` |
+| `UPDATED_STATUS` | `updateTask` | `existingTask.isCompleted !== nextIsCompleted` | `'open'` / `'completed'` |
+| `CHANGED_ASSIGNEE` | `updateTask` | `prevAssigneeId !== newAssigneeId` (normalizacja `null`) | `userId` lub `null` |
+| `CHANGED_DEADLINE` | `updateTask` | porównanie ISO stringów (`toDeadlineString`) | ISO datetime lub `null` |
+
+Każdy wpis powstaje **w tej samej transakcji** co modyfikacja zadania (`prisma.$transaction(async (tx) => …)`) — nie ma ryzyka "zaszumionego" audytu po błędzie zapisu.
+
+#### 3.13.4 Endpoint historii
+
+`GET /api/tasks/:id/activity`:
+- Autoryzacja przez `findTaskForUser` (workspace-aware — te same reguły co `GET /tasks/:id`). Brak zadania w dostępnych workspace'ach → `404`
+- Zwraca `{ activity: ActivityLogEntry[] }`, sortowane `createdAt DESC`
+- `include: { user: { select: { id, name, avatarUrl } } }` — gotowy payload do wyświetlenia avatara autora zmiany
+
+Route zarejestrowany jako `router.get('/:id/activity', taskController.getTaskActivity)` przed `/:id` — kolejność ma znaczenie, bo Express dopasowuje ścieżki w kolejności deklaracji.
+
+#### 3.13.5 Frontend — `TaskActivityLog`
+
+Plik: `web/src/components/tasks/TaskActivityLog.tsx`.
+
+- **Lokalizacja w UI**: Na dole `TaskModal` (tylko gdy modal pracuje na istniejącym zadaniu, nie w trybie "create"). Dla syntetycznych instancji RRULE używa `task.originalTaskId ?? task.id` — historia jest logiem **bazowego** zadania, a nie każdego wystąpienia
+- **Fetching**: `useQuery(['tasks', taskId, 'activity'], tasksApi.getActivity)` — osobny query key, enabled gdy `taskId` jest prawdziwe
+- **Resolver assignee ID → nazwa**: Wpis `CHANGED_ASSIGNEE` trzyma gołe `userId`. Komponent korzysta z `useTeamMembers(teamId)` i mapy `Map<userId, TeamMemberApiRow>` do wyświetlenia imienia, emaila i awatara. Fallback: "nikogo" (unassign), "nieznanego użytkownika" (np. były członek zespołu usunięty z `TeamMember`)
+- **Formatowanie**: `date-fns` z lokalizacją `pl`. Relatywny timestamp (`formatDistanceToNow`) + tooltip z pełną datą (`format 'd MMM yyyy, HH:mm'`)
+- **Renderer akcji (`renderAction`)**:
+  - `CREATED` → "utworzył(a) zadanie"
+  - `UPDATED_STATUS` → "zmienił(a) status na wykonane / do zrobienia"
+  - `CHANGED_ASSIGNEE` → "przypisał(a) zadanie do X" + inline avatar; dla `null` → "usunął(ęła) przypisanie"
+  - `CHANGED_DEADLINE` → "zmienił(a) termin z X na Y" (z formatowaniem ludzkim lub "brak" dla `null`)
+  - fallback → "wykonał(a) akcję <action>" (`font-mono`)
+- **Wygląd**: Timeline z pionową linią po lewej i kropkami (`border-l` + absolute dots). Każdy wpis: avatar autora (`size="sm"`), tekst akcji, timestamp. Nagłówek z ikoną `History` ("Historia zmian")
+- **Stany puste / błędne**: "Ładowanie historii…", "Nie udało się pobrać historii zmian.", "Brak zapisanych zdarzeń."
+
+#### 3.13.6 Inwalidacja cache
+
+`TaskModal` inwaliduje `['tasks', task.originalTaskId ?? task.id, 'activity']` przy:
+- `onSuccess` mutacji update zadania (edycja z modala)
+- `onSettled` optymistycznego toggle'a ukończenia
+
+Dzięki temu timeline odświeża się natychmiast po każdej akcji użytkownika w modalu.
 
 ---
 
@@ -663,6 +776,19 @@ Dzieli się na dwie sekcje:
 | userId | String? | FK do User (pending) |
 | expiresAt | DateTime? | Czas wygaśnięcia (pending) |
 
+### ActivityLog
+| Pole | Typ | Opis |
+|------|-----|------|
+| id | String (cuid) | Identyfikator |
+| taskId | String | FK do Task (Cascade) |
+| userId | String | FK do User (Cascade) — autor zmiany |
+| action | String | Typ akcji: `CREATED`, `UPDATED_STATUS`, `CHANGED_ASSIGNEE`, `CHANGED_DEADLINE`, ... |
+| oldValue | String? | Poprzednia wartość (serializowana) |
+| newValue | String? | Nowa wartość |
+| createdAt | DateTime (default now) | Znacznik czasu |
+| @@index | `(taskId, createdAt)` | Timeline zadania |
+| @@index | `(userId)` | Filtr "zmiany danego użytkownika" |
+
 ### PushSubscription
 | Pole | Typ | Opis |
 |------|-----|------|
@@ -690,11 +816,13 @@ Dzieli się na dwie sekcje:
 - **`Dashboard`** — Kontener główny, zarządza stanem filtra kategorii współdzielonym między inbox a kalendarzem
 - **`TaskInbox`** — Skrzynka odbiorcza z sekcjami: dzisiaj, zaległe, jutro, później; zakładki kategorii; CRUD zadań; modal managera kategorii; tworzenie wydarzeń z menu kontekstowego
 - **`CalendarView`** — Komponent FullCalendar z widokami miesiąc/tydzień/dzień; scalanie zadań i wydarzeń; drag & drop; resize; modale tworzenia/edycji
-- **`TaskModal`** — Pełna edycja zadania: cykliczność, przypomnienia (ReminderPicker), załączniki (AttachmentPanel), priorytety, kategorie, przypisywanie do członka zespołu (dropdown widoczny w workspace zespołowym)
+- **`TaskModal`** — Pełna edycja zadania: cykliczność, przypomnienia (ReminderPicker), załączniki (AttachmentPanel), priorytety, kategorie, przypisywanie do członka zespołu (dropdown widoczny w workspace zespołowym), **sekcja historii zmian** (`TaskActivityLog`) widoczna w trybie edycji. Dla syntetycznych instancji RRULE historia ładowana przez `task.originalTaskId ?? task.id`
 - **`EventModal`** — Pełna edycja wydarzenia: lokalizacja, cykliczność, przypomnienia, załączniki, przypisywanie do członka zespołu (dropdown widoczny w workspace zespołowym; nowe wydarzenia domyślnie przypisywane do twórcy)
 - **`Layout`** — Nagłówek z SearchBar, avatar użytkownika otwierający `ProfileSettingsModal` (ustawienia motywu i powiadomień push przeniesione z nagłówka do zakładki "Preferencje"), logout
 - **`SearchBar`** — Globalna cross-workspace wyszukiwarka z debounce, skrót Ctrl/Cmd+K, integracja z modalami, `WorkspaceBadge` przy każdym wyniku, automatyczne przełączenie aktywnego workspace'a przy kliknięciu wyniku z obcego zespołu
-- **`AssigneeAvatar`** — Awatar przypisanej osoby (obraz z fallbackiem na inicjał). Rozmiary xs/sm/md, używany w `TaskCard`, `CalendarView`, `TaskModal`, `EventModal`
+- **`AssigneeAvatar`** — Awatar przypisanej osoby (obraz z fallbackiem na inicjał). Rozmiary xs/sm/md, używany w `TaskCard`, `CalendarView`, `TaskModal`, `EventModal`, `SearchBar` (wyniki), `TaskActivityLog`
+- **`AssigneeFilterToggle`** — Pill-button "Tylko moje przypisania" (ARIA `switch`). Widoczny wyłącznie w workspace zespołowym; filtruje listy zadań i wydarzeń po zalogowanym użytkowniku. Warianty `default` (w `TaskInbox`) i `compact` (w headerze `Layout`). Stan w `useAssigneeFilterStore` (persystowany w localStorage)
+- **`TaskActivityLog`** — Timeline historii zmian zadania z avatarami autorów, lokalizacją `pl` (date-fns), resolverem `assigneeId → nazwa` przez `useTeamMembers`. Obsługuje typy akcji `CREATED`, `UPDATED_STATUS`, `CHANGED_ASSIGNEE`, `CHANGED_DEADLINE` (fallback na nieznane)
 - **`ProfileSettingsModal`** — Zcentralizowany modal ustawień użytkownika z zakładkami `ProfileTab` (edycja nazwy + avatar z croppingiem), `SecurityTab` (zmiana hasła), `PreferencesTab` (motyw + powiadomienia push), `AccountTab` (RODO export + usunięcie konta z potwierdzeniem frazy "USUŃ")
 - **`TeamManagerModal`** — Zakładkowy panel zarządzania zespołem: `TeamMembersTab` (lista, zmiana roli, kick/leave), `TeamInvitesTab` (OWNER: generowanie kodów zaproszeń), `TeamSettingsTab` (OWNER: edycja nazwy + usunięcie zespołu)
 - **`ConfirmDialog`** — Generyczny dialog potwierdzenia z wariantem `destructive`, używany w team management
@@ -703,7 +831,8 @@ Dzieli się na dwie sekcje:
 
 - **Zustand** (`authStore`) — token w localStorage, login/register/logout, `checkAuth()` przy starcie
 - **Zustand** (`useWorkspaceStore`) — aktywny workspace (teamId | null), persystencja w localStorage, czyszczony przy zmianie sesji
-- **TanStack Query** — cache z `staleTime` 5 minut; query keys scopowane do workspace'a (np. `['tasks', teamId, 'inbox']`); auto-inwalidacja przy zmianie workspace'a
+- **Zustand** (`useAssigneeFilterStore`) — flaga `onlyMine: boolean` dla filtra "Tylko moje przypisania", persystencja w localStorage (`mlm-assignee-filter`). Flaga ignorowana w workspace osobistym
+- **TanStack Query** — cache z `staleTime` 5 minut; query keys scopowane do workspace'a i filtra assignee (np. `['tasks', teamId, 'inbox', { assigneeId }]`); auto-inwalidacja przy zmianie workspace'a
 - **ThemeContext** — light/dark/system
 
 ### Klient API
@@ -716,8 +845,8 @@ Axios z `baseURL: '/api'`, automatyczny Bearer token, obsługa `FormData` (usuni
 
 | Moduł | Opis |
 |-------|------|
-| `types.ts` | Typy TypeScript: Team, TeamMember, TeamInvitation, TeamRole, InvitationStatus, User, Category, Task, Event, CalendarItem, ApiResponse, AuthResponse, PaginatedResponse, **SearchResultType, SearchResultItem, SearchResponse**. Modele Category, Task, Event rozszerzone o opcjonalne `teamId` i `team?`. Task/Event dodatkowo o `assigneeId?` i zagnieżdżony `assignee?: Pick<User, 'id' \| 'name' \| 'avatarUrl' \| 'email'>`. |
-| `validators.ts` | Schematy Zod: auth (w tym `changePasswordSchema` z wymogiem minimum 8 znaków i refinementem `newPassword === confirmNewPassword`, `updateProfileSchema`), kategorie, zadania, wydarzenia, zakres dat, query parametry, zespoły (`createTeamSchema`, `updateTeamSchema` — 2–100 znaków po trim, `updateMemberRoleSchema` — enum OWNER/MEMBER, `inviteMembersSchema`, `joinTeamSchema`), **search (searchQuerySchema, searchResultItemSchema, searchResponseSchema)**. Schematy CRUD rozszerzone o `teamId` i `assigneeId` (cuid, nullable, optional). Schematy query (getCategoriesQuerySchema, getTasksQuerySchema, getEventsQuerySchema) scopowane do workspace'a. |
+| `types.ts` | Typy TypeScript: Team, TeamMember, TeamInvitation, TeamRole, InvitationStatus, User, Category, Task, Event, CalendarItem, ApiResponse, AuthResponse, PaginatedResponse, **SearchResultType, SearchResultItem, SearchResponse**. Modele Category, Task, Event rozszerzone o opcjonalne `teamId` i `team?`. Task/Event dodatkowo o `assigneeId?` i zagnieżdżony `assignee?: Pick<User, 'id' \| 'name' \| 'avatarUrl' \| 'email'>`. `SearchResultItem.assignee?: Pick<User, 'id' \| 'name' \| 'email' \| 'avatarUrl'> \| null`. Typy zadania (`web/src/types`) dodatkowo o `originalTaskId?` i `isRecurringInstance?` dla instancji RRULE oraz `ActivityLogEntry`, `ActivityLogAction`, `ActivityLogUser`. |
+| `validators.ts` | Schematy Zod: auth (w tym `changePasswordSchema` z wymogiem minimum 8 znaków i refinementem `newPassword === confirmNewPassword`, `updateProfileSchema`), kategorie, zadania, wydarzenia, zakres dat, query parametry, zespoły (`createTeamSchema`, `updateTeamSchema` — 2–100 znaków po trim, `updateMemberRoleSchema` — enum OWNER/MEMBER, `inviteMembersSchema`, `joinTeamSchema`), **search (searchQuerySchema, searchResultItemSchema, searchResponseSchema)**. Schematy CRUD rozszerzone o `teamId` i `assigneeId` (cuid, nullable, optional). Schematy query (`getCategoriesQuerySchema`, `taskQuerySchema`, `dateRangeQuerySchema`, `getEventsQuerySchema`) scopowane do workspace'a **i filtra `assigneeId`**. `taskQuerySchema` dokumentuje, że `startDate`/`endDate` są wymagane gdy klient oczekuje rozwijania recurrence. `searchResultItemSchema` dołącza pole `assignee` (obiekt lub nullish). |
 | `constants.ts` | Stałe: priorytety (etykiety, kolory), domyślne kategorie (seed), etykiety cykliczności, nazwy widoków FullCalendar, domyślne sloty czasowe, limity uploadu, **etykiety workspace'ów (`PERSONAL_WORKSPACE_LABEL = 'Konto osobiste'`, `TEAM_WORKSPACE_FALLBACK_LABEL = 'Zespół'`)** |
 
 **Uwaga**: Schematy Zod w pakiecie shared są teraz importowane przez kontrolery backendowe, co zmniejsza duplikację walidacji między API a shared. Kontrolery rozszerzają shared schematy o dodatkowe pola specyficzne dla endpointu (np. `dateString` refinement).
@@ -755,19 +884,19 @@ Axios z `baseURL: '/api'`, automatyczny Bearer token, obsługa `FormData` (usuni
 ## 8. Uwagi i potencjalne luki
 
 1. **Mobile workspace**: Zadeklarowany w `package.json`, ale katalog `mobile/` nie istnieje — komendy `yarn mobile:*` nie zadziałają
-2. **Pending attachments**: Schema bazy obsługuje załączniki "oczekujące" z `expiresAt`, ale brak implementacji uploadu pending i crona czyszczącego wygasłe rekordy
-3. **Wyszukiwarka — ograniczenia pól**: Przeszukuje tylko tytuł i opis — nie uwzględnia kategorii, lokalizacji ani załączników. (Scope workspace'ów został naprawiony: zwraca wyniki osobiste + ze wszystkich zespołów użytkownika, każdy wynik zawiera `teamId`/`teamName`)
+2. **Pending attachments — upload flow**: Schema bazy obsługuje załączniki "oczekujące" z `expiresAt`, cron `startAttachmentCleanupCron` sprząta wygasłe rekordy (hourly), ale **endpoint pending-upload** (np. wrzucenie pliku zanim istnieje zadanie, a potem podpięcie do nowo utworzonego) nie jest jeszcze eksponowany publicznie. Mechanizm jest gotowy od strony housekeepingu, ale nie ma UX do jego wygenerowania
+3. **Wyszukiwarka — ograniczenia pól**: Przeszukuje tylko tytuł i opis — nie uwzględnia kategorii, lokalizacji ani załączników. (Scope workspace'ów został naprawiony: zwraca wyniki osobiste + ze wszystkich zespołów użytkownika, każdy wynik zawiera `teamId`/`teamName`; od niedawna zwraca też `assignee`)
 4. **Paginacja**: Typ `PaginatedResponse` istnieje w shared, ale żaden endpoint API nie implementuje paginacji
-5. **README**: Dokumentacja API w README jest niekompletna — brakuje wielu endpointów (attachments, search, notifications, health, profile settings: password/export/delete, teams: update/delete, member management)
-6. **Cykliczne zadania**: W przeciwieństwie do wydarzeń, zadania z `recurrenceRule` nie generują syntetycznych instancji — pole jest w modelu, ale logika rozwijania cykliczności nie jest w pełni zaimplementowana dla zadań
+5. **README**: Dokumentacja API w README jest niekompletna — brakuje wielu endpointów (attachments, search, notifications, health, profile settings: password/export/delete, teams: update/delete, member management, task activity log)
+6. **Cykliczne zadania — UI wystąpień**: Backend rozwija recurring tasks do syntetycznych instancji (sekcja 3.2), ale UI modyfikacji pojedynczego wystąpienia (tzw. "this occurrence only" / "this and following") nie jest jeszcze dostępne — edycja instancji RRULE modyfikuje oryginalne zadanie bazowe
 7. **Workspace — brak wysyłania emaili z zaproszeniami**: Endpoint generuje kody zaproszeń, ale ich dostarczenie do zaproszonych osób jest manualne (kopiowanie kodów). Brak integracji z serwisem email
 8. **Assignee — brak powiadamiania całego zespołu**: Cron przypomnień kieruje push do assignee (lub twórcy jako fallback). Nie ma opcji "powiadom wszystkich członków zespołu" dla zadań zespołowych bez przypisania — powiadamiany jest tylko twórca
-9. **Assignee — brak filtrów "moje przypisania"**: Backend ma indeksy `(assigneeId)` i `(teamId, assigneeId)`, ale API endpointów list (GET /tasks, GET /events) nie przyjmuje parametru `assigneeId`. Frontend również nie oferuje przełącznika "tylko moje zadania w tym zespole"
-10. **Assignee — brak historii zmian**: Reassign zadania nie jest logowany — brak audytu kto i kiedy zmienił przypisanie
-11. **Assignee dla wydarzeń — domyślne zachowanie**: `EventController.createEvent` domyślnie przypisuje nowe wydarzenia do twórcy (jeśli nie podano `assigneeId`). `TaskController.createTask` nie robi tego — tworzone zadanie jest bez assignee. Niespójne zachowanie może być mylące w UI
-12. **Wyszukiwarka i assignee**: SearchBar nie wyświetla informacji o przypisanym użytkowniku w wynikach, nie pozwala też filtrować po assignee
-13. **Profile — brak MFA/2FA**: `SecurityTab` obsługuje tylko zmianę hasła. Brak dwuskładnikowej autentykacji, historii zalogowań, aktywnych sesji
-14. **Profile — eksport RODO tylko dla danych osobistych**: `GET /api/auth/export` zwraca wyłącznie `teamId = null` tasks/events/categories. Dane zespołowe (gdzie użytkownik jest członkiem) nie są eksportowane — może być niewystarczające dla pełnego żądania "wszystkich moich danych"
-15. **Profile — brak soft-delete konta / okresu recovery**: `DELETE /api/auth/me` natychmiast kasuje rekord z DB (cascade). Brak okresu karencji / możliwości przywrócenia konta przez użytkownika po pomyłkowym usunięciu
-16. **Teams — brak potwierdzenia/soft-delete przy usuwaniu zespołu**: `DELETE /api/teams/:id` natychmiast kasuje zespół cascade wraz ze wszystkimi zadaniami, wydarzeniami, kategoriami i zaproszeniami. Brak mechanizmu przywrócenia w razie pomyłki
-17. **Teams — brak powiadomienia usuniętych członków**: Po `removeMember` / `kick` usunięty użytkownik nie otrzymuje żadnego powiadomienia (email/push) o utracie dostępu do zespołu
+9. **Activity Log tylko dla zadań**: Audyt zmian (sekcja 3.13) obejmuje **wyłącznie** model `Task`. Zmiany w `Event`, `Category` oraz w konfiguracji zespołu (zmiana nazwy, degradacja członka, usunięcie) nie są logowane — brak pełnego audit traila aplikacji
+10. **Activity Log — zawężony zakres akcji**: Logowane są tylko `CREATED`, `UPDATED_STATUS`, `CHANGED_ASSIGNEE`, `CHANGED_DEADLINE`. Zmiany tytułu, opisu, kategorii, priorytetu, `scheduledStart/End`, `recurrenceRule`, `reminderMinutes` nie trafiają do historii. Również usunięcie zadania nie produkuje wpisu `DELETED` (cascade kasuje historię razem z zadaniem)
+11. **Wyszukiwarka — brak filtra po assignee**: API wspiera `GET /tasks?assigneeId=` i toggle "tylko moje" istnieje, ale SearchBar (global search) nie przyjmuje dedykowanego filtra po assignee — wyszukiwarka zwraca wszystkie dostępne wyniki ze wszystkich workspace'ów
+12. **Profile — brak MFA/2FA**: `SecurityTab` obsługuje tylko zmianę hasła. Brak dwuskładnikowej autentykacji, historii zalogowań, aktywnych sesji
+13. **Profile — eksport RODO tylko dla danych osobistych**: `GET /api/auth/export` zwraca wyłącznie `teamId = null` tasks/events/categories. Dane zespołowe (gdzie użytkownik jest członkiem) oraz wpisy `ActivityLog` nie są eksportowane — może być niewystarczające dla pełnego żądania "wszystkich moich danych"
+14. **Profile — brak soft-delete konta / okresu recovery**: `DELETE /api/auth/me` natychmiast kasuje rekord z DB (cascade). Brak okresu karencji / możliwości przywrócenia konta przez użytkownika po pomyłkowym usunięciu
+15. **Teams — brak potwierdzenia/soft-delete przy usuwaniu zespołu**: `DELETE /api/teams/:id` natychmiast kasuje zespół cascade wraz ze wszystkimi zadaniami, wydarzeniami, kategoriami i zaproszeniami. Brak mechanizmu przywrócenia w razie pomyłki
+16. **Teams — brak powiadomienia usuniętych członków**: Po `removeMember` / `kick` usunięty użytkownik nie otrzymuje żadnego powiadomienia (email/push) o utracie dostępu do zespołu
+17. **Activity Log — nieznany autor po usunięciu członka**: `activityLog.userId` ma `onDelete: Cascade` na `User`. Gdy członek zespołu zostanie usunięty z konta (nie z zespołu — całkowicie usunie konto), wszystkie jego wpisy historii znikną — audit trail traci informację kto dokonał zmian. Warto rozważyć `SetNull` z zachowanym `oldValue`/`newValue` dla wpisów historycznych
