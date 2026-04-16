@@ -6,20 +6,7 @@ import { useCreateTeamMutation } from '../../hooks/useTeams';
 import { useWorkspaceStore } from '../../store/useWorkspaceStore';
 import { Button } from '@/components/ui/button';
 import toast from 'react-hot-toast';
-import axios from 'axios';
-
-function apiErrorMessage(error: unknown): string {
-  if (
-    axios.isAxiosError(error) &&
-    error.response?.data &&
-    typeof error.response.data === 'object' &&
-    'message' in error.response.data
-  ) {
-    const msg = (error.response.data as { message?: string }).message;
-    if (msg) return msg;
-  }
-  return 'Wystąpił nieoczekiwany błąd';
-}
+import { getApiErrorMessage } from '@/lib/apiErrors';
 
 interface CreateTeamModalProps {
   isOpen: boolean;
@@ -61,7 +48,7 @@ export default function CreateTeamModal({ isOpen, onClose }: CreateTeamModalProp
           toast.success('Zespół utworzony');
         },
         onError(err) {
-          setFormError(apiErrorMessage(err));
+          setFormError(getApiErrorMessage(err));
         },
       },
     );

@@ -11,20 +11,7 @@ import {
 import { useWorkspaceStore } from '../../store/useWorkspaceStore';
 import { Button } from '@/components/ui/button';
 import toast from 'react-hot-toast';
-import axios from 'axios';
-
-function apiErrorMessage(error: unknown): string {
-  if (
-    axios.isAxiosError(error) &&
-    error.response?.data &&
-    typeof error.response.data === 'object' &&
-    'message' in error.response.data
-  ) {
-    const msg = (error.response.data as { message?: string }).message;
-    if (msg) return msg;
-  }
-  return 'Wystąpił nieoczekiwany błąd';
-}
+import { getApiErrorMessage } from '@/lib/apiErrors';
 
 function parseEmails(raw: string): string[] {
   const parts = raw.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
@@ -101,7 +88,7 @@ export default function TeamManagerModal({ isOpen, onClose }: TeamManagerModalPr
           toast.success('Zaproszenia wygenerowane');
         },
         onError: (err) => {
-          setInviteError(apiErrorMessage(err));
+          setInviteError(getApiErrorMessage(err));
         },
       },
     );
