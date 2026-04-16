@@ -21,6 +21,7 @@ import { Event, Task } from '../types';
 import { useDebounce } from '../hooks/useDebounce';
 import TaskModal from './TaskModal';
 import EventModal from './EventModal';
+import AssigneeAvatar from './AssigneeAvatar';
 
 interface WorkspaceBadgeProps {
   item: SearchResultItem;
@@ -263,6 +264,17 @@ export default function SearchBar() {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <div className="truncate text-sm font-medium app-text">{item.title}</div>
+            {item.assignee ? (
+              <AssigneeAvatar
+                assignee={{
+                  id: item.assignee.id,
+                  name: item.assignee.name,
+                  email: item.assignee.email,
+                  avatarUrl: item.assignee.avatarUrl,
+                }}
+                size="xs"
+              />
+            ) : null}
             <WorkspaceBadge item={item} isForeign={isForeign} />
           </div>
           {item.description && (

@@ -25,6 +25,7 @@ import { patchTaskInTaskCaches, snapshotTaskCaches, restoreTaskCaches } from '..
 import TaskCard from './TaskCard';
 import TaskModal from './TaskModal';
 import EventModal from './EventModal';
+import AssigneeFilterToggle from './AssigneeFilterToggle';
 import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
 import { useEscapeToClose } from '../hooks/useEscapeToClose';
@@ -414,6 +415,11 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
               document.body
             )}
         </div>
+      </div>
+
+      {/* Assignee filter (only visible in team workspaces) */}
+      <div className="px-4 pb-2 flex items-center justify-end">
+        <AssigneeFilterToggle />
       </div>
 
       {/* Category tabs */}

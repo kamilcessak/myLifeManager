@@ -144,6 +144,12 @@ export interface SearchResultItem {
    * - `string` (team name) for team items.
    */
   teamName?: string;
+  /**
+   * Optional assignee summary for the item.
+   * - `null` / `undefined` when the item is unassigned.
+   * - Populated with a subset of the assignee's user fields otherwise.
+   */
+  assignee?: Pick<User, 'id' | 'name' | 'email' | 'avatarUrl'> | null;
 }
 
 export interface SearchResponse {

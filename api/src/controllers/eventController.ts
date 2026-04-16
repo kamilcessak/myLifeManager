@@ -134,7 +134,7 @@ export async function getEvents(req: Request, res: Response, next: NextFunction)
   try {
     const query = eventsListQuerySchema.parse(req.query);
     const userId = req.user!.id;
-    const { startDate, endDate, categoryId, teamId } = query;
+    const { startDate, endDate, categoryId, teamId, assigneeId } = query;
 
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -148,6 +148,8 @@ export async function getEvents(req: Request, res: Response, next: NextFunction)
       workspaceWhere = { userId, teamId: null };
     }
 
+    const assigneeFilter = assigneeId ? { assigneeId } : {};
+
     const nonRecurringEvents = await prisma.event.findMany({
       where: {
         ...workspaceWhere,
@@ -160,6 +162,7 @@ export async function getEvents(req: Request, res: Response, next: NextFunction)
           },
         ],
         ...(categoryId ? { categoryId } : {}),
+        ...assigneeFilter,
       },
       include: eventCategoryInclude,
     });
@@ -169,6 +172,7 @@ export async function getEvents(req: Request, res: Response, next: NextFunction)
         ...workspaceWhere,
         recurrenceRule: { not: null },
         ...(categoryId ? { categoryId } : {}),
+        ...assigneeFilter,
       },
       include: eventCategoryInclude,
     });
@@ -260,9 +264,17 @@ export async function createEvent(req: Request, res: Response, next: NextFunctio
       await ensureCategoryMatchesWorkspace(userId, data.categoryId, workspaceTeamId);
     }
 
-    // Default assignee to the acting user when not explicitly provided.
+    // Default assignee policy (aligned with tasks):
+    // - Personal workspace (teamId === null): default to the creator (userId)
+    //   unless the payload explicitly set assigneeId (including null).
+    // - Team workspace (teamId !== null): leave unassigned (null)
+    //   unless the payload explicitly provided an assigneeId.
     const requestedAssigneeId =
-      data.assigneeId === undefined ? userId : data.assigneeId;
+      data.assigneeId === undefined
+        ? workspaceTeamId === null
+          ? userId
+          : null
+        : data.assigneeId;
 
     const resolvedAssigneeId = await resolveAssigneeId(
       requestedAssigneeId,

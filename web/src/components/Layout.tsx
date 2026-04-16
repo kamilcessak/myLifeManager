@@ -3,6 +3,7 @@ import { Calendar, ChevronDown, LogOut, Settings, User } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import SearchBar from './SearchBar';
 import WorkspaceSwitcher from './layout/WorkspaceSwitcher';
+import AssigneeFilterToggle from './AssigneeFilterToggle';
 import ProfileSettingsModal from './profile/ProfileSettingsModal';
 
 interface LayoutProps {
@@ -55,6 +56,7 @@ export default function Layout({ children }: LayoutProps) {
         </div>
 
         <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+          <AssigneeFilterToggle variant="compact" />
           <WorkspaceSwitcher />
           <div className="relative" ref={menuRef}>
             <button

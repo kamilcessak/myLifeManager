@@ -6,6 +6,13 @@ const router = Router();
 
 router.use(requireAuth);
 
+type SearchAssignee = {
+  id: string;
+  name: string | null;
+  email: string;
+  avatarUrl: string | null;
+};
+
 type SearchResultItem = {
   id: string;
   type: "task" | "event";
@@ -14,7 +21,15 @@ type SearchResultItem = {
   date: Date;
   teamId: string | null;
   teamName: string | undefined;
+  assignee: SearchAssignee | null;
 };
+
+const assigneeSelect = {
+  id: true,
+  name: true,
+  email: true,
+  avatarUrl: true,
+} as const;
 
 // GET /api/search?q=term
 router.get("/", async (req: Request, res: Response) => {
@@ -72,6 +87,7 @@ router.get("/", async (req: Request, res: Response) => {
           createdAt: true,
           teamId: true,
           team: { select: { name: true } },
+          assignee: { select: assigneeSelect },
         },
         take: 10,
       }),
@@ -87,6 +103,7 @@ router.get("/", async (req: Request, res: Response) => {
           createdAt: true,
           teamId: true,
           team: { select: { name: true } },
+          assignee: { select: assigneeSelect },
         },
         take: 10,
       }),
@@ -100,6 +117,7 @@ router.get("/", async (req: Request, res: Response) => {
       date: task.scheduledStart ?? task.deadline ?? task.createdAt,
       teamId: task.teamId,
       teamName: task.team?.name,
+      assignee: task.assignee ?? null,
     }));
 
     const normalizedEvents: SearchResultItem[] = events.map((event) => ({
@@ -110,6 +128,7 @@ router.get("/", async (req: Request, res: Response) => {
       date: event.startTime ?? event.createdAt,
       teamId: event.teamId,
       teamName: event.team?.name,
+      assignee: event.assignee ?? null,
     }));
 
     // TASK 3: Combine, sort by date desc, cap at 10, serialize.
@@ -124,6 +143,7 @@ router.get("/", async (req: Request, res: Response) => {
         date: item.date.toISOString(),
         teamId: item.teamId,
         teamName: item.teamName,
+        assignee: item.assignee,
       }));
 
     return res.json({

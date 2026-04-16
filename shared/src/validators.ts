@@ -93,6 +93,7 @@ export const dateRangeQuerySchema = z.object({
   endDate: z.string().datetime(),
   categoryId: z.string().optional(),
   teamId: z.string().optional(),
+  assigneeId: z.string().optional(),
 });
 
 export const taskQuerySchema = z.object({
@@ -102,6 +103,7 @@ export const taskQuerySchema = z.object({
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   teamId: z.string().optional(),
+  assigneeId: z.string().optional(),
 });
 
 /** List categories — optional team scope */
@@ -149,6 +151,14 @@ export const searchResultItemSchema = z.object({
   date: z.string().datetime(),
   teamId: z.string().nullable(),
   teamName: z.string().optional(),
+  assignee: z
+    .object({
+      id: z.string(),
+      name: z.string().nullable(),
+      email: z.string(),
+      avatarUrl: z.string().nullable(),
+    })
+    .nullish(),
 });
 
 export const searchResponseSchema = z.object({

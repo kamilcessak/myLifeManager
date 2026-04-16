@@ -164,13 +164,19 @@ export const tasksApi = {
     startDate?: string;
     endDate?: string;
     teamId?: string;
+    assigneeId?: string;
   }) => api.get("/tasks", { params }),
 
-  getInbox: (categoryId?: string, teamId?: string | null) =>
+  getInbox: (
+    categoryId?: string,
+    teamId?: string | null,
+    assigneeId?: string | null,
+  ) =>
     api.get("/tasks/inbox", {
       params: {
         ...(categoryId ? { categoryId } : {}),
         ...(teamId ? { teamId } : {}),
+        ...(assigneeId ? { assigneeId } : {}),
       },
     }),
 
@@ -229,6 +235,7 @@ export const eventsApi = {
     endDate: string;
     categoryId?: string;
     teamId?: string;
+    assigneeId?: string;
   }) => api.get("/events", { params }),
 
   getById: (id: string) => api.get(`/events/${id}`),

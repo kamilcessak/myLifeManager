@@ -73,6 +73,7 @@ const updateTaskSchema = z.object({
 const inboxQuerySchema = z.object({
   categoryId: z.string().optional(),
   teamId: z.string().optional(),
+  assigneeId: z.string().optional(),
 });
 
 async function findTaskForUser(taskId: string, userId: string) {
@@ -170,6 +171,10 @@ export async function getTasks(req: Request, res: Response, next: NextFunction):
       where.categoryId = query.categoryId;
     }
 
+    if (query.assigneeId) {
+      where.assigneeId = query.assigneeId;
+    }
+
     if (query.isCompleted !== undefined) {
       where.isCompleted = query.isCompleted === 'true';
     }
@@ -217,7 +222,7 @@ export async function getTasks(req: Request, res: Response, next: NextFunction):
 
 export async function getInbox(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { categoryId, teamId } = inboxQuerySchema.parse(req.query);
+    const { categoryId, teamId, assigneeId } = inboxQuerySchema.parse(req.query);
     const userId = req.user!.id;
 
     const baseWhere: Record<string, unknown> = {
@@ -231,6 +236,7 @@ export async function getInbox(req: Request, res: Response, next: NextFunction):
         },
       ],
       ...(categoryId ? { categoryId: String(categoryId) } : {}),
+      ...(assigneeId ? { assigneeId } : {}),
     };
 
     if (teamId) {
@@ -300,8 +306,20 @@ export async function createTask(req: Request, res: Response, next: NextFunction
       await ensureCategoryMatchesWorkspace(userId, data.categoryId, workspaceTeamId);
     }
 
+    // Default assignee policy:
+    // - Personal workspace (teamId === null): default to the creator (userId)
+    //   unless the payload explicitly set assigneeId (including null).
+    // - Team workspace (teamId !== null): leave unassigned (null)
+    //   unless the payload explicitly provided an assigneeId.
+    const requestedAssigneeId =
+      data.assigneeId === undefined
+        ? workspaceTeamId === null
+          ? userId
+          : null
+        : data.assigneeId;
+
     const resolvedAssigneeId = await resolveAssigneeId(
-      data.assigneeId,
+      requestedAssigneeId,
       workspaceTeamId,
       userId,
     );
