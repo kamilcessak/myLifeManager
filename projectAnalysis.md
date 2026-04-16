@@ -15,6 +15,7 @@
    - [Powiadomienia push](#38-powiadomienia-push)
    - [Przypomnienia (Cron)](#39-przypomnienia-cron)
    - [Upload obrazów (legacy)](#310-upload-obrazów-legacy)
+   - [Zespoły i Obszary robocze (Workspaces)](#311-zespoły-i-obszary-robocze-workspaces)
 4. [Model danych](#4-model-danych)
 5. [Frontend — widoki i komponenty](#5-frontend--widoki-i-komponenty)
 6. [Pakiet współdzielony (shared)](#6-pakiet-współdzielony-shared)
@@ -240,7 +241,202 @@ Starszy mechanizm uploadu, prawdopodobnie poprzedzający system załączników.
 
 ---
 
+### 3.11 Zespoły i Obszary robocze (Workspaces)
+
+Funkcjonalność wielokontekstowej pracy — użytkownik może operować w swoim osobistym workspace'ie (jak dotychczas) lub przełączyć się na wspólny workspace zespołu. Wszystkie dane (zadania, wydarzenia, kategorie) są scopowane do aktywnego workspace'a.
+
+#### 3.11.1 Koncepcja workspace'ów
+
+Workspace jest abstrakcją widoku danych, nie osobnym modelem DB. Rozróżnienie odbywa się przez kolumnę `teamId`:
+- **Workspace osobisty**: `teamId IS NULL` — dane filtrowane po `userId`
+- **Workspace zespołowy**: `teamId = <teamId>` — dane filtrowane po `teamId`, dostępne dla wszystkich członków zespołu
+
+Dzięki temu istniejąca logika CRUD pozostaje, a jedyną zmianą jest dodanie warunku workspace'a do zapytań Prisma.
+
+#### 3.11.2 Backend — Zespoły (Teams API)
+
+| Endpoint | Metoda | Opis |
+|----------|--------|------|
+| `/api/teams` | POST | Tworzenie nowego zespołu. W transakcji: tworzy `Team`, dodaje twórcę jako `OWNER` w `TeamMember`, tworzy domyślną kategorię "Ogólne" dla zespołu. Walidacja body przez `createTeamSchema` z shared. |
+| `/api/teams` | GET | Lista zespołów użytkownika. Zwraca zespoły z dołączonymi polami `myRole` (rola użytkownika) i `memberSince` (data dołączenia). |
+| `/api/teams/:id/members` | GET | Lista członków zespołu. Wymaga członkostwa (verifyTeamAccess). Zwraca dane użytkowników (id, email, name, avatarUrl) z rolą i datą dołączenia. |
+| `/api/teams/:id/invites` | POST | Generowanie zaproszeń. **Tylko OWNER** może wywoływać. Przyjmuje tablicę emaili, deduplikuje, generuje 8-znakowy hex code (`randomBytes(4)`). Upsert z retry (do 8 prób przy kolizji kodu P2002). Zaproszenie ważne 7 dni. |
+| `/api/teams/join` | POST | Dołączanie do zespołu kodem. Weryfikuje: kod istnieje, status PENDING, nie wygasł. Tworzy `TeamMember` z rolą MEMBER, zmienia status zaproszenia na ACCEPTED. Blokuje ponowne dołączanie. |
+
+**Mechanizm autoryzacji zespołów**:
+- `verifyTeamAccess(userId, teamId)` — utility sprawdzający istnienie `TeamMember` dla pary (teamId, userId). Rzuca `ApiError(403)` przy braku dostępu.
+- `ensureCategoryMatchesWorkspace(userId, categoryId, teamId)` — utility weryfikujący, że kategoria przypisana do zadania/wydarzenia należy do tego samego workspace'a. Zapobiega cross-workspace przypisywaniu kategorii.
+
+#### 3.11.3 Backend — Refaktoryzacja kontrolerów
+
+W ramach tego feature'a nastąpił istotny refactoring architektury backendu:
+- **Wydzielenie kontrolerów**: Logika z inline route handlerów (`routes/tasks.ts`, `routes/events.ts`, `routes/categories.ts`) przeniesiona do dedykowanych plików kontrolerów (`controllers/taskController.ts`, `controllers/eventController.ts`, `controllers/categoryController.ts`)
+- **Routery jako czyste deklaracje**: Pliki route'ów zawierają teraz wyłącznie deklarację ścieżek → kontrolerów
+- **Nowy middleware**: `validateRequest.ts` — generyczny middleware walidacji `req.body` schematem Zod, zastępujący powtarzalną walidację wewnątrz handlerów
+- **Wspólne walidatory z shared**: Kontrolery importują schematy Zod z pakietu `shared` zamiast definiować lokalne duplikaty (`taskQuerySchema`, `getCategoriesQuerySchema`, `getEventsQuerySchema`, `createTeamSchema`, etc.)
+
+**Wzorzec autoryzacji w kontrolerach** — każdy kontroler implementuje helper `findXForUser(id, userId)`:
+1. Pobiera rekord z DB
+2. Jeśli `teamId` jest ustawione → sprawdza membership użytkownika w `TeamMember`
+3. Jeśli `teamId` jest null → sprawdza `userId` i `teamId === null`
+4. Zwraca rekord lub null (404)
+
+#### 3.11.4 Backend — Zmiany w modelu danych
+
+**Nowe modele Prisma**:
+
+| Model | Opis |
+|-------|------|
+| `Team` | Zespół: id, name, timestamps. Relacje: members, invitations, tasks, events, categories. |
+| `TeamMember` | Członkostwo: teamId + userId (unique compound), role (OWNER/MEMBER), joinedAt. Cascade delete z Team i User. |
+| `TeamInvitation` | Zaproszenie: teamId, email, code (unique), status (PENDING/ACCEPTED), expiresAt. Cascade delete z Team. |
+
+**Nowe enumy**: `TeamRole` (OWNER, MEMBER), `InvitationStatus` (PENDING, ACCEPTED).
+
+**Nowe kolumny w istniejących modelach**:
+
+| Model | Kolumna | Typ | Opis |
+|-------|---------|-----|------|
+| Category | teamId | String? | FK do Team, nullable. NULL = kategoria osobista. |
+| Task | teamId | String? | FK do Team, nullable. NULL = zadanie osobiste. |
+| Event | teamId | String? | FK do Team, nullable. NULL = wydarzenie osobiste. |
+
+**Zmienione constrainty**:
+- `categories` unique: `(userId, name)` → `(userId, name, teamId)` — ta sama nazwa kategorii może istnieć w różnych workspace'ach
+- Nowe indeksy: `(userId, teamId)` na categories, tasks, events — przyspieszenie zapytań workspace-scoped
+
+**Migracja**: `20260416160000_add_teams_workspaces/migration.sql`
+
+#### 3.11.5 Frontend — Workspace Switcher
+
+Nowy komponent `WorkspaceSwitcher` w nagłówku (`Layout`):
+
+- **Popover z listą workspace'ów**: Konto osobiste + lista zespołów z GET `/api/teams`
+- **Ikony**: User (osobiste), Building2 (zespół), z wizualnym oznaczeniem aktywnego workspace'a (check icon)
+- **Akcje z popover'a**: "Utwórz nowy zespół" (→ `CreateTeamModal`), "Dołącz z kodem" (→ `JoinTeamModal`)
+- **Przycisk ustawień**: Widoczny tylko przy aktywnym workspace zespołowym → otwiera `TeamManagerModal`
+- **Label "Obszar"**: Nad switcherem, widoczny od breakpointu `sm`
+
+#### 3.11.6 Frontend — Modale zespołów
+
+| Modal | Plik | Opis |
+|-------|------|------|
+| `CreateTeamModal` | `components/teams/CreateTeamModal.tsx` | Formularz tworzenia zespołu (pole "Nazwa zespołu"). Po sukcesie: refetch listy zespołów, automatyczne przełączenie na nowy workspace. |
+| `JoinTeamModal` | `components/teams/JoinTeamModal.tsx` | Formularz dołączania kodem zaproszenia (pole monospace). Po sukcesie: refetch zespołów, przełączenie na dołączony workspace. |
+| `TeamManagerModal` | `components/teams/TeamManagerModal.tsx` | Panel zarządzania aktywnym zespołem: lista członków z rolami, sekcja generowania zaproszeń (tylko OWNER). Pole textarea na emaile (separator: przecinek, średnik, whitespace), generowanie kodów z możliwością kopiowania do schowka. |
+
+#### 3.11.7 Frontend — Warstwa danych (hooks i query keys)
+
+**Nowy store**: `useWorkspaceStore` (Zustand + `persist` middleware):
+- Stan: `activeWorkspaceId: string | null` (null = workspace osobisty)
+- Persystencja w `localStorage` pod kluczem `mlm-workspace-context`
+- Czyszczony przy logout/login/register przez `clearClientSession()`
+
+**Centralizacja query keys** (`lib/queryKeys.ts`):
+- Wszystkie klucze zapytań zawierają `teamId` jako drugi segment: `['tasks', teamId, 'inbox']`, `['events', teamId, startDate, endDate]`, `['categories', teamId]`
+- Zmiana workspace'a automatycznie tworzy nowe wpisy w cache (nie kolidują z danymi innego workspace'a)
+
+**Auto-inwalidacja** (`WorkspaceQueryInvalidation` w `App.tsx`):
+- Renderless component nasłuchujący zmiany `activeWorkspaceId`
+- Przy zmianie: inwaliduje `['tasks']`, `['events']`, `['categories']` (refetch danych nowego workspace'a)
+- Ignoruje pierwszy render (ref `previousWorkspaceId`)
+
+**Nowe hooki**:
+
+| Hook | Plik | Opis |
+|------|------|------|
+| `useTeams` | `hooks/useTeams.ts` | Pobieranie listy zespołów użytkownika |
+| `useTeamMembers` | `hooks/useTeams.ts` | Pobieranie członków konkretnego zespołu |
+| `useCreateTeamMutation` | `hooks/useTeams.ts` | Mutacja tworzenia zespołu z auto-refetch |
+| `useJoinTeamMutation` | `hooks/useTeams.ts` | Mutacja dołączania kodem z auto-refetch |
+| `useInviteMembersMutation` | `hooks/useTeams.ts` | Mutacja generowania zaproszeń |
+| `useCategories` | `hooks/useCategories.ts` | Pobieranie kategorii scopowanych do aktywnego workspace'a |
+| `useTasks` | `hooks/useTasks.ts` | Pobieranie zadań (inbox lub scheduled) scopowanych do workspace'a |
+| `useEvents` | `hooks/useEvents.ts` | Pobieranie wydarzeń scopowanych do workspace'a |
+
+**Ekstrakcja QueryClient** (`lib/queryClient.ts`):
+- Singleton `QueryClient` wyekstrahowany z `main.tsx` do osobnego modułu — umożliwia import w `clearClientSession` i w store'ach bez cyklicznych zależności
+
+**Optymistyczne aktualizacje cache** (`lib/workspaceTaskCache.ts`):
+- `snapshotTaskCaches(queryClient, teamId)` — snapshot inbox + scheduled caches dla danego workspace'a
+- `restoreTaskCaches(queryClient, snapshot)` — rollback przy błędzie mutacji
+- `patchTaskInTaskCaches(queryClient, teamId, taskId, patch)` — optymistyczny patch zadania we wszystkich cache'ach workspace'a
+- Zastępuje ręczne `setQueriesData` rozrzucone po TaskInbox, CalendarView, TaskModal
+
+**Centralizacja obsługi błędów API** (`lib/apiErrors.ts`):
+- `getApiErrorMessage(error)` — ekstrakcja czytelnego komunikatu z odpowiedzi Axios, Zod validation errors, i nested error obiektów
+- Używane w modalach zespołów zamiast surowego `error.message`
+
+#### 3.11.8 Frontend — Zmiany w istniejących komponentach
+
+**CalendarView**:
+- Dane pobierane przez hooki `useTasks({ scope: 'scheduled' })` i `useEvents()` zamiast monolitycznego `useQuery(['calendar-items'])`
+- Budowanie `calendarData` przeniesione do `useMemo` (zamiast w `queryFn`)
+- Dodana logika kolapsowania all-day eventów w widoku tygodniowym: domyślnie max 2 widoczne, przycisk "+N więcej" / "Zwiń całodniowe"
+- Kolory zadań na kalendarzu: niebieski (oczekujące) / zielony (ukończone) — niezależne od kategorii
+- Inwalidacja cache: `['tasks']` i `['events']` zamiast `['calendar-items']` i `['inbox-tasks']`
+
+**TaskInbox**:
+- Dane pobierane przez `useTasks({ scope: 'inbox' })` i `useCategories()`
+- Nowa mutacja: `moveDeadlineToTodayMutation` — przycisk "Przesuń na dziś" widoczny przy zadaniach w sekcji "zaległe" (overdue), zmienia datę deadline'u zachowując godzinę
+- Tworzenie kategorii: automatycznie dołącza `teamId` aktywnego workspace'a
+
+**TaskModal**:
+- Tworzenie zadania: dołącza `teamId` z aktywnego workspace'a
+- Quick deadline buttons: "Dzisiaj", "Jutro", "W przyszłym tygodniu" — szybkie ustawianie deadline'u z zachowaniem godziny
+- Optimistic toggle complete: korzysta z `workspaceTaskCache` utilities
+
+**EventModal**:
+- Tworzenie wydarzenia: dołącza `teamId` z aktywnego workspace'a
+- Inwalidacja cache zaktualizowana do nowych kluczy
+
+**SearchBar**, **AttachmentPanel**:
+- Kategorie pobierane z hooka `useCategories()` zamiast inline `useQuery`
+- Inwalidacja cache zaktualizowana
+
+**Layout**:
+- Dodanie `WorkspaceSwitcher` obok istniejących elementów nagłówka
+
+**authStore**:
+- Login/register/logout/checkAuth: wywołują `clearClientSession()` (czyszczenie cache React Query + reset aktywnego workspace'a)
+
+#### 3.11.9 Zmiany CSS
+
+- Completed task na kalendarzu: `opacity: 0.4` → `opacity: 0.92` (kolor tła zielony wystarczająco odróżnia ukończone)
+- Task card padding: `p-3` → `px-3 py-2` (kompaktniejsze karty)
+- Priority 4 (pilne): poprawiony kontrast kolorów w dark mode (`#fecaca` zamiast `dark:text-red-300`)
+
+---
+
 ## 4. Model danych
+
+### Team
+| Pole | Typ | Opis |
+|------|-----|------|
+| id | String (cuid) | Identyfikator |
+| name | String | Nazwa zespołu |
+| createdAt / updatedAt | DateTime | Znaczniki czasu |
+
+### TeamMember
+| Pole | Typ | Opis |
+|------|-----|------|
+| id | String (cuid) | Identyfikator |
+| teamId | String | FK do Team |
+| userId | String | FK do User |
+| role | TeamRole (OWNER/MEMBER) | Rola w zespole |
+| joinedAt | DateTime | Data dołączenia |
+| @@unique | (teamId, userId) | Użytkownik raz w zespole |
+
+### TeamInvitation
+| Pole | Typ | Opis |
+|------|-----|------|
+| id | String (cuid) | Identyfikator |
+| teamId | String | FK do Team |
+| email | String | Email zapraszanego |
+| code | String (unique) | 8-znakowy hex kod zaproszenia |
+| status | InvitationStatus (PENDING/ACCEPTED) | Status zaproszenia |
+| expiresAt | DateTime | Czas wygaśnięcia (7 dni) |
+| createdAt | DateTime | Data utworzenia |
 
 ### User
 | Pole | Typ | Opis |
@@ -251,6 +447,7 @@ Starszy mechanizm uploadu, prawdopodobnie poprzedzający system załączników.
 | name | String? | Imię/nazwa |
 | avatarUrl | String? | URL avatara |
 | createdAt / updatedAt | DateTime | Znaczniki czasu |
+| teamMembers | TeamMember[] | Relacja do członkostw w zespołach |
 
 ### Category
 | Pole | Typ | Opis |
@@ -262,6 +459,9 @@ Starszy mechanizm uploadu, prawdopodobnie poprzedzający system załączników.
 | isDefault | Boolean | Czy domyślna (nieusuwalna) |
 | order | Int | Kolejność wyświetlania |
 | userId | String | FK do User |
+| teamId | String? | FK do Team (null = kategoria osobista) |
+| @@unique | (userId, name, teamId) | Unikalność w obrębie workspace'a |
+| @@index | (userId, teamId) | Indeks workspace-scoped |
 
 ### Task
 | Pole | Typ | Opis |
@@ -281,7 +481,9 @@ Starszy mechanizm uploadu, prawdopodobnie poprzedzający system załączników.
 | reminderMinutes | Int? | Minuty przed przypomnieniem |
 | reminderSent | Boolean | Czy przypomnienie wysłane |
 | userId | String | FK do User |
+| teamId | String? | FK do Team (null = zadanie osobiste) |
 | categoryId | String? | FK do Category |
+| @@index | (userId, teamId) | Indeks workspace-scoped |
 
 ### Event
 | Pole | Typ | Opis |
@@ -297,7 +499,9 @@ Starszy mechanizm uploadu, prawdopodobnie poprzedzający system załączników.
 | reminderMinutes | Int? | Minuty przed przypomnieniem |
 | reminderSent | Boolean | Czy przypomnienie wysłane |
 | userId | String | FK do User |
+| teamId | String? | FK do Team (null = wydarzenie osobiste) |
 | categoryId | String? | FK do Category |
+| @@index | (userId, teamId) | Indeks workspace-scoped |
 
 ### Attachment
 | Pole | Typ | Opis |
@@ -348,12 +552,13 @@ Starszy mechanizm uploadu, prawdopodobnie poprzedzający system załączników.
 ### Zarządzanie stanem
 
 - **Zustand** (`authStore`) — token w localStorage, login/register/logout, `checkAuth()` przy starcie
-- **TanStack Query** — cache z `staleTime` 5 minut; fetching kalendarza, inboxu, kategorii, wyszukiwania
+- **Zustand** (`useWorkspaceStore`) — aktywny workspace (teamId | null), persystencja w localStorage, czyszczony przy zmianie sesji
+- **TanStack Query** — cache z `staleTime` 5 minut; query keys scopowane do workspace'a (np. `['tasks', teamId, 'inbox']`); auto-inwalidacja przy zmianie workspace'a
 - **ThemeContext** — light/dark/system
 
 ### Klient API
 
-Axios z `baseURL: '/api'`, automatyczny Bearer token, obsługa `FormData` (usunięcie Content-Type), automatyczny logout i redirect do `/login` przy 401.
+Axios z `baseURL: '/api'`, automatyczny Bearer token, obsługa `FormData` (usunięcie Content-Type), automatyczny logout i redirect do `/login` przy 401. Centralizacja obsługi błędów: `getApiErrorMessage()` z `lib/apiErrors.ts`.
 
 ---
 
@@ -361,11 +566,11 @@ Axios z `baseURL: '/api'`, automatyczny Bearer token, obsługa `FormData` (usuni
 
 | Moduł | Opis |
 |-------|------|
-| `types.ts` | Typy TypeScript: User, Category, Task, Event, CalendarItem, ApiResponse, AuthResponse, PaginatedResponse |
-| `validators.ts` | Schematy Zod: auth, kategorie, zadania, wydarzenia, zakres dat, query parametry |
+| `types.ts` | Typy TypeScript: Team, TeamMember, TeamInvitation, TeamRole, InvitationStatus, User, Category, Task, Event, CalendarItem, ApiResponse, AuthResponse, PaginatedResponse. Modele Category, Task, Event rozszerzone o opcjonalne `teamId` i `team?`. |
+| `validators.ts` | Schematy Zod: auth, kategorie, zadania, wydarzenia, zakres dat, query parametry, zespoły (createTeamSchema, inviteMembersSchema, joinTeamSchema). Schematy CRUD rozszerzone o `teamId`. Schematy query (getCategoriesQuerySchema, getTasksQuerySchema, getEventsQuerySchema) scopowane do workspace'a. |
 | `constants.ts` | Stałe: priorytety (etykiety, kolory), domyślne kategorie (seed), etykiety cykliczności, nazwy widoków FullCalendar, domyślne sloty czasowe, limity uploadu |
 
-**Uwaga**: Typy w shared są częściowo niezsynchronizowane z aktualnym API (brakuje m.in. `scheduledAllDay`, `reminderMinutes` w typie Task). Walidatory Zod w shared są koncepcyjnie podobne do tych w API, ale nie identyczne.
+**Uwaga**: Schematy Zod w pakiecie shared są teraz importowane przez kontrolery backendowe, co zmniejsza duplikację walidacji między API a shared. Kontrolery rozszerzają shared schematy o dodatkowe pola specyficzne dla endpointu (np. `dateString` refinement).
 
 ---
 
@@ -402,8 +607,13 @@ Axios z `baseURL: '/api'`, automatyczny Bearer token, obsługa `FormData` (usuni
 1. **Mobile workspace**: Zadeklarowany w `package.json`, ale katalog `mobile/` nie istnieje — komendy `yarn mobile:*` nie zadziałają
 2. **Pending attachments**: Schema bazy obsługuje załączniki "oczekujące" z `expiresAt`, ale brak implementacji uploadu pending i crona czyszczącego wygasłe rekordy
 3. **PATCH /auth/me**: Endpoint istnieje w API, ale frontend go nie wykorzystuje — brak UI do edycji profilu
-4. **Wyszukiwarka**: Przeszukuje tylko tytuł i opis — nie uwzględnia kategorii, lokalizacji ani załączników
+4. **Wyszukiwarka**: Przeszukuje tylko tytuł i opis — nie uwzględnia kategorii, lokalizacji ani załączników. **Nie jest scopowana do workspace'a** — wyszukuje po `userId` bez uwzględnienia `teamId`
 5. **Paginacja**: Typ `PaginatedResponse` istnieje w shared, ale żaden endpoint API nie implementuje paginacji
-6. **Desynchronizacja typów shared ↔ API**: Typy w pakiecie shared nie pokrywają wszystkich pól z Prisma schema (np. `scheduledAllDay`, `reminderMinutes`)
-7. **README**: Dokumentacja API w README jest niekompletna — brakuje wielu endpointów (attachments, search, notifications, health, PATCH /auth/me)
-8. **Cykliczne zadania**: W przeciwieństwie do wydarzeń, zadania z `recurrenceRule` nie generują syntetycznych instancji — pole jest w modelu, ale logika rozwijania cykliczności nie jest w pełni zaimplementowana dla zadań
+6. **README**: Dokumentacja API w README jest niekompletna — brakuje wielu endpointów (attachments, search, notifications, health, PATCH /auth/me, teams)
+7. **Cykliczne zadania**: W przeciwieństwie do wydarzeń, zadania z `recurrenceRule` nie generują syntetycznych instancji — pole jest w modelu, ale logika rozwijania cykliczności nie jest w pełni zaimplementowana dla zadań
+8. **Workspace — brak wysyłania emaili z zaproszeniami**: Endpoint generuje kody zaproszeń, ale ich dostarczenie do zaproszonych osób jest manualne (kopiowanie kodów). Brak integracji z serwisem email
+9. **Workspace — brak zarządzania członkami**: Brak endpointów do usuwania członków z zespołu, zmiany ról (MEMBER → OWNER), ani opuszczania zespołu. Brak endpointu usuwania/edycji zespołu
+10. **Workspace — brak czyszczenia wygasłych zaproszeń**: Zaproszenia z przekroczonym `expiresAt` pozostają w DB (status PENDING). Brak crona czyszczącego
+11. **Workspace — przypomnienia cron**: System przypomnień (`cron/reminders.ts`) nie został zaktualizowany o świadomość workspace'ów — wysyła powiadomienia do `userId` właściciela zadania/wydarzenia, co jest poprawne dla zadań osobistych, ale dla zadań zespołowych powinien powiadamiać wszystkich członków zespołu (lub przypisanego)
+12. **Workspace — brak przypisywania zadań do użytkowników**: W kontekście zespołowym zadania mają `userId` twórcy, ale brak pola `assigneeId` — nie można przypisać zadania innemu członkowi zespołu
+13. **Workspace — załączniki**: System załączników nie weryfikuje dostępu przez membership zespołowy — operuje na `userId` z zadania/wydarzenia, co może powodować problemy z autoryzacją w kontekście zespołowym
