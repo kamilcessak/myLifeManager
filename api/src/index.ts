@@ -14,6 +14,7 @@ import uploadRoutes from "./routes/upload.js";
 import attachmentsRoutes from "./routes/attachments.js";
 import searchRoutes from "./routes/search.js";
 import notificationsRoutes from "./routes/notifications.js";
+import teamsRoutes from "./routes/teams.js";
 import { startReminderCron } from "./cron/reminders.js";
 
 // Load environment variables
@@ -49,6 +50,7 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/attachments", attachmentsRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/notifications", notificationsRoutes);
+app.use("/api/teams", teamsRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

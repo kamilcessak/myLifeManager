@@ -1,3 +1,36 @@
+// ==================== TEAMS / WORKSPACES ====================
+export type TeamRole = 'OWNER' | 'MEMBER';
+
+export type InvitationStatus = 'PENDING' | 'ACCEPTED';
+
+export interface Team {
+  id: string;
+  name: string;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface TeamMember {
+  id: string;
+  teamId: string;
+  userId: string;
+  role: TeamRole;
+  joinedAt: Date | string;
+  team?: Team;
+  user?: User;
+}
+
+export interface TeamInvitation {
+  id: string;
+  teamId: string;
+  email: string;
+  code: string;
+  status: InvitationStatus;
+  expiresAt: Date | string;
+  createdAt: Date | string;
+  team?: Team;
+}
+
 // ==================== USER ====================
 export interface User {
   id: string;
@@ -6,6 +39,7 @@ export interface User {
   avatarUrl: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
+  teamMembers?: TeamMember[];
 }
 
 export interface UserWithoutPassword extends Omit<User, 'password'> {}
@@ -19,8 +53,10 @@ export interface Category {
   isDefault: boolean;
   order: number;
   userId: string;
+  teamId?: string;
   createdAt: Date | string;
   updatedAt: Date | string;
+  team?: Team;
 }
 
 // ==================== TASK ====================
@@ -37,8 +73,10 @@ export interface Task {
   recurrenceRule: string | null;
   imageUrl: string | null;
   userId: string;
+  teamId?: string;
   categoryId: string | null;
   category?: Category | null;
+  team?: Team;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -56,8 +94,10 @@ export interface Event {
   isAllDay: boolean;
   recurrenceRule: string | null;
   userId: string;
+  teamId?: string;
   categoryId: string | null;
   category?: Category | null;
+  team?: Team;
   createdAt: Date | string;
   updatedAt: Date | string;
   // For recurring event instances

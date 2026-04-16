@@ -10,6 +10,58 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ==================== TEAMS / WORKSPACES ====================
+enum TeamRole {
+  OWNER
+  MEMBER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members     TeamMember[]
+  invitations TeamInvitation[]
+  tasks       Task[]
+  events      Event[]
+  categories  Category[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id       String   @id @default(cuid())
+  teamId   String
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     TeamRole @default(MEMBER)
+  joinedAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+model TeamInvitation {
+  id        String           @id @default(cuid())
+  teamId    String
+  team      Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  email     String
+  code      String           @unique
+  status    InvitationStatus @default(PENDING)
+  expiresAt DateTime
+  createdAt DateTime         @default(now())
+
+  @@map("team_invitations")
+}
+
 // ==================== USERS ====================
 model User {
   id        String   @id @default(cuid())
@@ -21,10 +73,11 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  categories Category[]
-  tasks      Task[]
-  events     Event[]
-  attachmentsPending Attachment[] @relation("UserPendingAttachments")
+  categories         Category[]
+  tasks              Task[]
+  events             Event[]
+  teamMembers        TeamMember[]
+  attachmentsPending Attachment[]       @relation("UserPendingAttachments")
   pushSubscriptions  PushSubscription[]
 
   @@map("users")
@@ -59,55 +112,60 @@ model Category {
 
   // Relations
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId String?
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: Cascade)
   tasks  Task[]
   events Event[]
 
-  @@unique([userId, name])
+  @@unique([userId, name, teamId])
+  @@index([userId, teamId])
   @@map("categories")
 }
 
 // ==================== TASKS ====================
 // Zadania - mogą być "niezaplanowane" (w Inbox) lub "zaplanowane" (na kalendarzu)
 model Task {
-  id          String    @id @default(cuid())
+  id          String  @id @default(cuid())
   title       String
   description String?
-  
+
   // Status
-  isCompleted   Boolean   @default(false)
-  completedAt   DateTime?
-  
+  isCompleted Boolean   @default(false)
+  completedAt DateTime?
+
   // Scheduling - null oznacza "w Inbox", wypełnione = "zaplanowane"
-  scheduledStart   DateTime?
-  scheduledEnd     DateTime?
-  scheduledAllDay  Boolean   @default(false) // true = tylko dzień, bez konkretnej godziny
-  
+  scheduledStart  DateTime?
+  scheduledEnd    DateTime?
+  scheduledAllDay Boolean   @default(false) // true = tylko dzień, bez konkretnej godziny
+
   // Deadline (opcjonalny - "do kiedy" niezależnie od scheduledStart)
-  deadline    DateTime?
-  
+  deadline DateTime?
+
   // Priority: 1 = low, 2 = medium, 3 = high, 4 = urgent
-  priority    Int       @default(2)
-  
+  priority Int @default(2)
+
   // Recurrence (format RRULE z iCalendar)
   recurrenceRule String?
-  
+
   // Attachment (zdjęcie)
-  imageUrl    String?
+  imageUrl String?
 
   // Reminder (null = brak powiadomienia)
   reminderMinutes Int?
   reminderSent    Boolean @default(false)
-  
+
   // Metadata
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  categoryId String?
-  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId      String?
+  team        Team?        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  categoryId  String?
+  category    Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   attachments Attachment[]
 
   @@index([userId, isCompleted])
@@ -115,42 +173,46 @@ model Task {
   @@index([userId, deadline])
   @@index([reminderSent, scheduledStart])
   @@index([reminderSent, deadline])
+  @@index([userId, teamId])
   @@map("tasks")
 }
 
 // ==================== EVENTS ====================
 // Wydarzenia - zawsze mają sztywny czas (start + end)
 model Event {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   title       String
   description String?
   location    String?
-  
+
   // Czas - wydarzenia ZAWSZE mają czas
-  startTime   DateTime
-  endTime     DateTime
-  isAllDay    Boolean  @default(false)
-  
+  startTime DateTime
+  endTime   DateTime
+  isAllDay  Boolean  @default(false)
+
   // Recurrence (format RRULE z iCalendar)
   recurrenceRule String?
 
   // Reminder (null = brak powiadomienia)
   reminderMinutes Int?
   reminderSent    Boolean @default(false)
-  
+
   // Metadata
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  categoryId String?
-  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId      String?
+  team        Team?        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  categoryId  String?
+  category    Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   attachments Attachment[]
 
   @@index([userId, startTime])
   @@index([reminderSent, startTime])
+  @@index([userId, teamId])
   @@map("events")
 }
 
@@ -162,7 +224,7 @@ model Event {
 // albo (zalecane na produkcji):
 //   npx prisma migrate dev --name add_attachments
 model Attachment {
-  id           String   @id @default(cuid())
+  id           String @id @default(cuid())
   filename     String
   originalName String
   mimetype     String
@@ -170,9 +232,9 @@ model Attachment {
   url          String
 
   taskId  String?
-  task    Task?  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task    Task?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
   eventId String?
-  event   Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event   Event?  @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   // Oczekujące (przed utworzeniem zadania/wydarzenia) — usuwane po expiresAt (np. 15 min)
   userId    String?

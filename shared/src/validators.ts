@@ -17,6 +17,7 @@ export const createCategorySchema = z.object({
   name: z.string().min(1, 'Nazwa jest wymagana').max(50, 'Nazwa może mieć max 50 znaków'),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Nieprawidłowy format koloru (np. #FF5733)'),
   icon: z.string().optional(),
+  teamId: z.string().optional(),
 });
 
 export const updateCategorySchema = createCategorySchema.partial();
@@ -26,6 +27,7 @@ export const createTaskSchema = z.object({
   title: z.string().min(1, 'Tytuł jest wymagany').max(255),
   description: z.string().optional(),
   categoryId: z.string().optional(),
+  teamId: z.string().optional(),
   priority: z.number().min(1).max(4).default(2),
   deadline: z.string().datetime().optional(),
   scheduledStart: z.string().datetime().optional(),
@@ -49,6 +51,7 @@ export const createEventSchema = z.object({
   description: z.string().optional(),
   location: z.string().optional(),
   categoryId: z.string().optional(),
+  teamId: z.string().optional(),
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),
   isAllDay: z.boolean().default(false),
@@ -62,6 +65,7 @@ export const dateRangeQuerySchema = z.object({
   startDate: z.string().datetime(),
   endDate: z.string().datetime(),
   categoryId: z.string().optional(),
+  teamId: z.string().optional(),
 });
 
 export const taskQuerySchema = z.object({
@@ -70,6 +74,29 @@ export const taskQuerySchema = z.object({
   scheduled: z.enum(['true', 'false']).optional(),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
+  teamId: z.string().optional(),
+});
+
+/** List categories — optional team scope */
+export const getCategoriesQuerySchema = z.object({
+  teamId: z.string().optional(),
+});
+
+/** Aliases for list endpoints */
+export const getTasksQuerySchema = taskQuerySchema;
+export const getEventsQuerySchema = dateRangeQuerySchema;
+
+// ==================== TEAM ====================
+export const createTeamSchema = z.object({
+  name: z.string().min(1, 'Nazwa zespołu jest wymagana'),
+});
+
+export const inviteMembersSchema = z.object({
+  emails: z.array(z.string().email('Nieprawidłowy format email')),
+});
+
+export const joinTeamSchema = z.object({
+  code: z.string().min(1, 'Kod zaproszenia jest wymagany'),
 });
 
 // Type exports
@@ -84,3 +111,7 @@ export type CreateEventInput = z.infer<typeof createEventSchema>;
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 export type DateRangeQuery = z.infer<typeof dateRangeQuerySchema>;
 export type TaskQuery = z.infer<typeof taskQuerySchema>;
+export type GetCategoriesQuery = z.infer<typeof getCategoriesQuerySchema>;
+export type CreateTeamInput = z.infer<typeof createTeamSchema>;
+export type InviteMembersInput = z.infer<typeof inviteMembersSchema>;
+export type JoinTeamInput = z.infer<typeof joinTeamSchema>;
