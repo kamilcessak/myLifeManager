@@ -1,6 +1,6 @@
 import axios from "axios";
 import type {
-  SearchResultItem as SearchResult,
+  SearchResultItem,
   Team,
   TeamInvitation,
   TeamRole,
@@ -256,7 +256,7 @@ export const notificationsApi = {
 // Search
 export const searchApi = {
   search: (q: string) =>
-    api.get<{ status: string; data: { results: SearchResult[] } }>("/search", {
+    api.get<{ status: string; data: { results: SearchResultItem[] } }>("/search", {
       params: { q },
     }),
 };

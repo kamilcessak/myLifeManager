@@ -56,6 +56,19 @@ export const TIME_SLOT_DURATION = 30; // minutes
 export const DAY_START_HOUR = 6;
 export const DAY_END_HOUR = 22;
 
+// ==================== WORKSPACES ====================
+/**
+ * User-facing label for a user's own (non-team) workspace.
+ * Used in search results, switchers and any "personal vs team" UI.
+ */
+export const PERSONAL_WORKSPACE_LABEL = 'Konto osobiste';
+
+/**
+ * Fallback label when a team workspace is missing a `teamName` (should not
+ * normally happen, but keeps the UI robust against partial payloads).
+ */
+export const TEAM_WORKSPACE_FALLBACK_LABEL = 'Zespół';
+
 // ==================== FILE UPLOAD ====================
 export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 export const ALLOWED_IMAGE_TYPES = [

@@ -1,16 +1,64 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, CheckSquare, Loader2, Search, X } from 'lucide-react';
+import {
+  Building2,
+  CalendarDays,
+  CheckSquare,
+  Loader2,
+  Search,
+  User as UserIcon,
+  X,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import {
+  PERSONAL_WORKSPACE_LABEL,
+  TEAM_WORKSPACE_FALLBACK_LABEL,
+  type SearchResultItem,
+} from 'shared';
 import { eventsApi, searchApi, tasksApi } from '../lib/api';
 import { useCategories } from '../hooks/useCategories';
-import type { SearchResultItem as SearchResult } from 'shared';
+import { useWorkspaceStore } from '../store/useWorkspaceStore';
 import { Event, Task } from '../types';
 import { useDebounce } from '../hooks/useDebounce';
 import TaskModal from './TaskModal';
 import EventModal from './EventModal';
 
+interface WorkspaceBadgeProps {
+  item: SearchResultItem;
+  isForeign: boolean;
+}
+
+function getWorkspaceLabel(item: SearchResultItem): string {
+  if (item.teamId === null) return PERSONAL_WORKSPACE_LABEL;
+  return item.teamName ?? TEAM_WORKSPACE_FALLBACK_LABEL;
+}
+
+function WorkspaceBadge({ item, isForeign }: WorkspaceBadgeProps) {
+  const isPersonal = item.teamId === null;
+  const label = getWorkspaceLabel(item);
+  const Icon = isPersonal ? UserIcon : Building2;
+
+  const baseClasses =
+    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide';
+  const toneClasses = isForeign
+    ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+    : isPersonal
+    ? 'bg-gray-100 text-gray-600 dark:bg-gray-700/60 dark:text-gray-300'
+    : 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300';
+
+  return (
+    <span
+      className={`${baseClasses} ${toneClasses}`}
+      title={isForeign ? `Przełącz na: ${label}` : label}
+    >
+      <Icon className="h-3 w-3" />
+      <span className="max-w-[8rem] truncate normal-case tracking-normal">{label}</span>
+    </span>
+  );
+}
+
 export default function SearchBar() {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<SearchResultItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -19,6 +67,9 @@ export default function SearchBar() {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isOpeningItem, setIsOpeningItem] = useState(false);
+
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
 
   const debouncedQuery = useDebounce(query, 300);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -97,11 +148,21 @@ export default function SearchBar() {
     [groupedResults.events, groupedResults.tasks]
   );
 
-  const handleOpenItem = async (item: SearchResult) => {
-    console.log('Kliknięto element:', item.id);
-
+  const handleOpenItem = async (item: SearchResultItem) => {
     try {
       setIsOpeningItem(true);
+
+      // If the result belongs to a different workspace, switch context first
+      // so any React Query hooks inside the modal pick up the correct teamId
+      // through their query keys.
+      if (item.teamId !== activeWorkspaceId) {
+        const targetLabel = getWorkspaceLabel(item);
+        setActiveWorkspace(item.teamId);
+        toast.success(`Przełączono na: ${targetLabel}`, {
+          id: `workspace-switch-${item.teamId ?? 'personal'}`,
+        });
+      }
+
       if (item.type === 'task') {
         const response = await tasksApi.getById(item.id);
         const task = response.data.data.task as Task;
@@ -122,7 +183,7 @@ export default function SearchBar() {
     setIsOpen(false);
   };
 
-  const handleItemClick = (item: SearchResult) => {
+  const handleItemClick = (item: SearchResultItem) => {
     handleOpenItem(item);
   };
 
@@ -173,6 +234,43 @@ export default function SearchBar() {
       setIsOpen(false);
       inputRef.current?.blur();
     }
+  };
+
+  const renderResultButton = (item: SearchResultItem) => {
+    const isActive =
+      flatResults[activeIndex]?.id === item.id && flatResults[activeIndex]?.type === item.type;
+    const isForeign = item.teamId !== activeWorkspaceId;
+
+    const TypeIcon = item.type === 'task' ? CheckSquare : CalendarDays;
+    const typeIconColor = item.type === 'task' ? 'text-blue-500' : 'text-purple-500';
+
+    const baseBtnClasses =
+      'flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition';
+    const hoverClasses = 'hover:bg-gray-100 dark:hover:bg-gray-700';
+    const activeClasses = isActive ? 'bg-gray-100 dark:bg-gray-700' : '';
+    // Subtle hint that clicking this result will switch workspace context.
+    const foreignClasses = isForeign
+      ? 'bg-amber-50/40 ring-1 ring-amber-200/60 dark:bg-amber-500/5 dark:ring-amber-500/20'
+      : '';
+
+    return (
+      <button
+        key={`${item.type}-${item.id}`}
+        onClick={() => handleItemClick(item)}
+        className={`${baseBtnClasses} ${hoverClasses} ${activeClasses} ${foreignClasses}`}
+      >
+        <TypeIcon className={`mt-0.5 h-4 w-4 shrink-0 ${typeIconColor}`} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <div className="truncate text-sm font-medium app-text">{item.title}</div>
+            <WorkspaceBadge item={item} isForeign={isForeign} />
+          </div>
+          {item.description && (
+            <div className="truncate text-xs app-text-muted">{item.description}</div>
+          )}
+        </div>
+      </button>
+    );
   };
 
   return (
@@ -230,25 +328,7 @@ export default function SearchBar() {
                     Zadania
                   </div>
                   <div className="space-y-1">
-                    {groupedResults.tasks.map((item) => (
-                      <button
-                        key={`task-${item.id}`}
-                        onClick={() => handleItemClick(item)}
-                        className={`flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-gray-100 dark:hover:bg-gray-700 ${
-                          flatResults[activeIndex]?.id === item.id && flatResults[activeIndex]?.type === item.type
-                            ? 'bg-gray-100 dark:bg-gray-700'
-                            : ''
-                        }`}
-                      >
-                        <CheckSquare className="mt-0.5 h-4 w-4 text-blue-500" />
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium app-text">{item.title}</div>
-                          {item.description && (
-                            <div className="truncate text-xs app-text-muted">{item.description}</div>
-                          )}
-                        </div>
-                      </button>
-                    ))}
+                    {groupedResults.tasks.map((item) => renderResultButton(item))}
                   </div>
                 </div>
               )}
@@ -259,25 +339,7 @@ export default function SearchBar() {
                     Wydarzenia
                   </div>
                   <div className="space-y-1">
-                    {groupedResults.events.map((item) => (
-                      <button
-                        key={`event-${item.id}`}
-                        onClick={() => handleItemClick(item)}
-                        className={`flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-gray-100 dark:hover:bg-gray-700 ${
-                          flatResults[activeIndex]?.id === item.id && flatResults[activeIndex]?.type === item.type
-                            ? 'bg-gray-100 dark:bg-gray-700'
-                            : ''
-                        }`}
-                      >
-                        <CalendarDays className="mt-0.5 h-4 w-4 text-purple-500" />
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium app-text">{item.title}</div>
-                          {item.description && (
-                            <div className="truncate text-xs app-text-muted">{item.description}</div>
-                          )}
-                        </div>
-                      </button>
-                    ))}
+                    {groupedResults.events.map((item) => renderResultButton(item))}
                   </div>
                 </div>
               )}
