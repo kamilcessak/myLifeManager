@@ -56,7 +56,16 @@ async function checkUpcomingReminders() {
           { deadline: { not: null } },
         ],
       },
-      select: { id: true, title: true, userId: true, scheduledStart: true, deadline: true, reminderMinutes: true },
+      select: {
+        id: true,
+        title: true,
+        userId: true,
+        assigneeId: true,
+        teamId: true,
+        scheduledStart: true,
+        deadline: true,
+        reminderMinutes: true,
+      },
     }),
     prisma.event.findMany({
       where: {
@@ -64,45 +73,66 @@ async function checkUpcomingReminders() {
         reminderSent: false,
         startTime: { gte: new Date(now.getTime() - 60_000) },
       },
-      select: { id: true, title: true, userId: true, startTime: true, reminderMinutes: true },
+      select: {
+        id: true,
+        title: true,
+        userId: true,
+        teamId: true,
+        startTime: true,
+        reminderMinutes: true,
+      },
     }),
   ]);
 
   let sentCount = 0;
 
   for (const task of tasks) {
-    if (task.reminderMinutes == null) continue;
-    const refTime = task.scheduledStart ?? task.deadline;
-    if (!refTime) continue;
+    try {
+      if (task.reminderMinutes == null) continue;
+      const refTime = task.scheduledStart ?? task.deadline;
+      if (!refTime) continue;
 
-    const reminderTime = new Date(refTime.getTime() - task.reminderMinutes * 60_000);
-    if (!isWithinWindow(reminderTime, now)) continue;
+      const reminderTime = new Date(refTime.getTime() - task.reminderMinutes * 60_000);
+      if (!isWithinWindow(reminderTime, now)) continue;
 
-    const label = task.scheduledStart ? 'Zadanie' : 'Deadline';
-    await sendPushToUser(task.userId, {
-      title: `${label} ${getReminderLabel(task.reminderMinutes)}`,
-      body: task.title,
-      url: '/',
-    });
+      // If the task has an assignee, notify them; otherwise fall back to the creator.
+      const targetUserId = task.assigneeId ?? task.userId;
 
-    await prisma.task.update({ where: { id: task.id }, data: { reminderSent: true } });
-    sentCount++;
+      const label = task.scheduledStart ? 'Zadanie' : 'Deadline';
+      await sendPushToUser(targetUserId, {
+        title: `${label} ${getReminderLabel(task.reminderMinutes)}`,
+        body: task.title,
+        url: '/',
+      });
+
+      await prisma.task.update({ where: { id: task.id }, data: { reminderSent: true } });
+      sentCount++;
+    } catch (err) {
+      console.error(`❌ Failed to send reminder for task ${task.id}:`, err);
+    }
   }
 
   for (const event of events) {
-    if (event.reminderMinutes == null) continue;
+    try {
+      if (event.reminderMinutes == null) continue;
 
-    const reminderTime = new Date(event.startTime.getTime() - event.reminderMinutes * 60_000);
-    if (!isWithinWindow(reminderTime, now)) continue;
+      const reminderTime = new Date(event.startTime.getTime() - event.reminderMinutes * 60_000);
+      if (!isWithinWindow(reminderTime, now)) continue;
 
-    await sendPushToUser(event.userId, {
-      title: `Wydarzenie ${getReminderLabel(event.reminderMinutes)}`,
-      body: event.title,
-      url: '/',
-    });
+      // Events don't have assignees in the current model — notify the creator.
+      const targetUserId = event.userId;
 
-    await prisma.event.update({ where: { id: event.id }, data: { reminderSent: true } });
-    sentCount++;
+      await sendPushToUser(targetUserId, {
+        title: `Wydarzenie ${getReminderLabel(event.reminderMinutes)}`,
+        body: event.title,
+        url: '/',
+      });
+
+      await prisma.event.update({ where: { id: event.id }, data: { reminderSent: true } });
+      sentCount++;
+    } catch (err) {
+      console.error(`❌ Failed to send reminder for event ${event.id}:`, err);
+    }
   }
 
   if (sentCount > 0) {
