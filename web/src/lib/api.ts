@@ -5,7 +5,7 @@ import type {
   TeamInvitation,
   TeamRole,
 } from "shared";
-import { type Attachment } from "../types";
+import { type Attachment, type ActivityLogEntry } from "../types";
 import { clearClientSession } from "./clearClientSession";
 
 export type TeamMemberApiRow = {
@@ -226,6 +226,11 @@ export const tasksApi = {
   unschedule: (id: string) => api.patch(`/tasks/${id}/unschedule`),
 
   delete: (id: string) => api.delete(`/tasks/${id}`),
+
+  getActivity: (id: string) =>
+    api.get<{ status: string; data: { activity: ActivityLogEntry[] } }>(
+      `/tasks/${id}/activity`,
+    ),
 };
 
 // Events

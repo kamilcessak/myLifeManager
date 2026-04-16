@@ -9,6 +9,7 @@ import { patchTaskInTaskCaches, snapshotTaskCaches, restoreTaskCaches } from '..
 import AttachmentPanel from './AttachmentPanel';
 import ReminderPicker from './ReminderPicker';
 import AssigneeAvatar from './AssigneeAvatar';
+import TaskActivityLog from './tasks/TaskActivityLog';
 import { cn, getPriorityChipClass, getPriorityLabel, normalizePriority } from '../lib/utils';
 import { useTheme } from '../context/ThemeContext';
 import { useEscapeToClose } from '../hooks/useEscapeToClose';
@@ -372,6 +373,11 @@ export default function TaskModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      if (task) {
+        queryClient.invalidateQueries({
+          queryKey: ['tasks', task.originalTaskId ?? task.id, 'activity'],
+        });
+      }
       toast.success('Zadanie zaktualizowane');
       onClose();
     },
@@ -413,6 +419,11 @@ export default function TaskModal({
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      if (task) {
+        queryClient.invalidateQueries({
+          queryKey: ['tasks', task.originalTaskId ?? task.id, 'activity'],
+        });
+      }
     },
   });
 
@@ -1140,6 +1151,13 @@ export default function TaskModal({
               </div>
             )}
           </div>
+
+          {task ? (
+            <TaskActivityLog
+              taskId={task.originalTaskId ?? task.id}
+              teamId={activeWorkspaceId}
+            />
+          ) : null}
         </form>
         </div>
 

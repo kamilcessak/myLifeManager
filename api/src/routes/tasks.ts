@@ -8,6 +8,7 @@ router.use(requireAuth);
 
 router.get('/inbox', taskController.getInbox);
 router.get('/', taskController.getTasks);
+router.get('/:id/activity', taskController.getTaskActivity);
 router.get('/:id', taskController.getTaskById);
 router.post('/', taskController.createTask);
 router.patch('/:id/schedule', taskController.scheduleTask);

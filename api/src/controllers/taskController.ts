@@ -8,6 +8,58 @@ import { verifyTeamAccess } from '../utils/teamAccess.js';
 import { ensureCategoryMatchesWorkspace } from '../utils/categoryWorkspace.js';
 import { taskQuerySchema } from 'shared';
 
+// ==================== ACTIVITY LOG HELPERS ====================
+
+export type ActivityLogAction =
+  | 'CREATED'
+  | 'UPDATED_STATUS'
+  | 'CHANGED_ASSIGNEE'
+  | 'CHANGED_DEADLINE';
+
+type PrismaTxClient = Prisma.TransactionClient | typeof prisma;
+
+/**
+ * Persist a single activity log entry for a task. The logging is best-effort:
+ * if the underlying write fails we swallow the error and only log it to the
+ * server console so the main task flow is never broken by audit problems.
+ *
+ * When invoked inside a `prisma.$transaction` callback, pass the transactional
+ * client as the first argument so the log is committed atomically with the
+ * originating change.
+ */
+export async function logActivity(
+  client: PrismaTxClient,
+  taskId: string,
+  userId: string,
+  action: ActivityLogAction,
+  oldValue?: string | null,
+  newValue?: string | null,
+): Promise<void> {
+  try {
+    await client.activityLog.create({
+      data: {
+        taskId,
+        userId,
+        action,
+        oldValue: oldValue ?? null,
+        newValue: newValue ?? null,
+      },
+    });
+  } catch (err) {
+    console.error('[activity-log] failed to write log', {
+      taskId,
+      userId,
+      action,
+      error: err instanceof Error ? err.message : err,
+    });
+  }
+}
+
+function toDeadlineString(value: Date | null | undefined): string | null {
+  if (!value) return null;
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+
 const taskInclude = {
   category: {
     select: {
@@ -388,25 +440,30 @@ export async function createTask(req: Request, res: Response, next: NextFunction
       userId,
     );
 
-    const task = await prisma.task.create({
-      data: {
-        title: data.title,
-        description: data.description,
-        categoryId: data.categoryId,
-        priority: data.priority,
-        deadline: data.deadline ? new Date(data.deadline) : undefined,
-        scheduledStart: data.scheduledStart ? new Date(data.scheduledStart) : undefined,
-        scheduledEnd: data.scheduledEnd ? new Date(data.scheduledEnd) : undefined,
-        scheduledAllDay: data.scheduledAllDay ?? false,
-        recurrenceRule: data.recurrenceRule,
-        imageUrl: data.imageUrl,
-        userId,
-        teamId: workspaceTeamId,
-        assigneeId: resolvedAssigneeId ?? null,
-        reminderMinutes: data.reminderMinutes ?? null,
-        reminderSent: false,
-      },
-      include: taskInclude,
+    const task = await prisma.$transaction(async (tx) => {
+      const created = await tx.task.create({
+        data: {
+          title: data.title,
+          description: data.description,
+          categoryId: data.categoryId,
+          priority: data.priority,
+          deadline: data.deadline ? new Date(data.deadline) : undefined,
+          scheduledStart: data.scheduledStart ? new Date(data.scheduledStart) : undefined,
+          scheduledEnd: data.scheduledEnd ? new Date(data.scheduledEnd) : undefined,
+          scheduledAllDay: data.scheduledAllDay ?? false,
+          recurrenceRule: data.recurrenceRule,
+          imageUrl: data.imageUrl,
+          userId,
+          teamId: workspaceTeamId,
+          assigneeId: resolvedAssigneeId ?? null,
+          reminderMinutes: data.reminderMinutes ?? null,
+          reminderSent: false,
+        },
+        include: taskInclude,
+      });
+
+      await logActivity(tx, created.id, userId, 'CREATED', null, created.title);
+      return created;
     });
 
     res.status(201).json({ status: 'success', data: { task } });
@@ -488,29 +545,84 @@ export async function updateTask(req: Request, res: Response, next: NextFunction
 
     const { assigneeId: _ignoredAssigneeId, ...restData } = data;
 
-    const task = await prisma.task.update({
-      where: { id: req.params.id },
-      data: {
-        ...restData,
-        teamId: data.teamId !== undefined ? data.teamId ?? null : undefined,
-        assigneeId: resolvedAssigneeId,
-        deadline: data.deadline ? new Date(data.deadline) : data.deadline === null ? null : undefined,
-        scheduledStart: data.scheduledStart
-          ? new Date(data.scheduledStart)
-          : data.scheduledStart === null
-            ? null
-            : undefined,
-        scheduledEnd: data.scheduledEnd
-          ? new Date(data.scheduledEnd)
-          : data.scheduledEnd === null
-            ? null
-            : undefined,
-        scheduledAllDay: data.scheduledAllDay !== undefined ? data.scheduledAllDay : undefined,
-        completedAt: data.isCompleted ? new Date() : data.isCompleted === false ? null : undefined,
-        reminderMinutes: data.reminderMinutes !== undefined ? (data.reminderMinutes ?? null) : undefined,
-        ...(shouldResetReminder ? { reminderSent: false } : {}),
-      },
-      include: taskInclude,
+    // Compute the "would-be" next values for the fields we audit so we can
+    // diff against the previously-persisted state. Using the same derivation
+    // as the update payload keeps the log consistent with the actual change.
+    const nextIsCompleted =
+      data.isCompleted !== undefined ? data.isCompleted : existingTask.isCompleted;
+    const nextAssigneeId =
+      resolvedAssigneeId !== undefined ? resolvedAssigneeId : existingTask.assigneeId;
+    const nextDeadline =
+      data.deadline !== undefined
+        ? data.deadline === null
+          ? null
+          : new Date(data.deadline)
+        : existingTask.deadline;
+
+    const task = await prisma.$transaction(async (tx) => {
+      const updated = await tx.task.update({
+        where: { id: req.params.id },
+        data: {
+          ...restData,
+          teamId: data.teamId !== undefined ? data.teamId ?? null : undefined,
+          assigneeId: resolvedAssigneeId,
+          deadline: data.deadline ? new Date(data.deadline) : data.deadline === null ? null : undefined,
+          scheduledStart: data.scheduledStart
+            ? new Date(data.scheduledStart)
+            : data.scheduledStart === null
+              ? null
+              : undefined,
+          scheduledEnd: data.scheduledEnd
+            ? new Date(data.scheduledEnd)
+            : data.scheduledEnd === null
+              ? null
+              : undefined,
+          scheduledAllDay: data.scheduledAllDay !== undefined ? data.scheduledAllDay : undefined,
+          completedAt: data.isCompleted ? new Date() : data.isCompleted === false ? null : undefined,
+          reminderMinutes: data.reminderMinutes !== undefined ? (data.reminderMinutes ?? null) : undefined,
+          ...(shouldResetReminder ? { reminderSent: false } : {}),
+        },
+        include: taskInclude,
+      });
+
+      if (existingTask.isCompleted !== nextIsCompleted) {
+        await logActivity(
+          tx,
+          updated.id,
+          userId,
+          'UPDATED_STATUS',
+          existingTask.isCompleted ? 'completed' : 'open',
+          nextIsCompleted ? 'completed' : 'open',
+        );
+      }
+
+      const prevAssigneeId = existingTask.assigneeId ?? null;
+      const newAssigneeId = nextAssigneeId ?? null;
+      if (prevAssigneeId !== newAssigneeId) {
+        await logActivity(
+          tx,
+          updated.id,
+          userId,
+          'CHANGED_ASSIGNEE',
+          prevAssigneeId,
+          newAssigneeId,
+        );
+      }
+
+      const prevDeadlineStr = toDeadlineString(existingTask.deadline);
+      const nextDeadlineStr = toDeadlineString(nextDeadline ?? null);
+      if (prevDeadlineStr !== nextDeadlineStr) {
+        await logActivity(
+          tx,
+          updated.id,
+          userId,
+          'CHANGED_DEADLINE',
+          prevDeadlineStr,
+          nextDeadlineStr,
+        );
+      }
+
+      return updated;
     });
 
     res.json({ status: 'success', data: { task } });
@@ -570,6 +682,35 @@ export async function unscheduleTask(req: Request, res: Response, next: NextFunc
     });
 
     res.json({ status: 'success', data: { task: updatedTask } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getTaskActivity(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = req.user!.id;
+    const task = await findTaskForUser(req.params.id, userId);
+
+    if (!task) {
+      throw new ApiError('Task not found', 404);
+    }
+
+    const logs = await prisma.activityLog.findMany({
+      where: { taskId: task.id },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: { id: true, name: true, avatarUrl: true },
+        },
+      },
+    });
+
+    res.json({ status: 'success', data: { activity: logs } });
   } catch (error) {
     next(error);
   }

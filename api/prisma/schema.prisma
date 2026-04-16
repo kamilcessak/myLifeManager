@@ -81,6 +81,7 @@ model User {
   teamMembers        TeamMember[]
   attachmentsPending Attachment[]       @relation("UserPendingAttachments")
   pushSubscriptions  PushSubscription[]
+  activityLogs       ActivityLog[]
 
   @@map("users")
 }
@@ -171,6 +172,7 @@ model Task {
   categoryId  String?
   category    Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   attachments Attachment[]
+  activityLogs ActivityLog[]
 
   @@index([userId, isCompleted])
   @@index([userId, scheduledStart])
@@ -181,6 +183,26 @@ model Task {
   @@index([assigneeId])
   @@index([teamId, assigneeId])
   @@map("tasks")
+}
+
+// ==================== ACTIVITY LOGS ====================
+// Historia zmian zadań - używana głównie w workspace'ach zespołowych,
+// ale rejestrowana także dla zadań prywatnych (na wypadek przyszłych
+// potrzeb audytu). Każdy wpis jest niezależny i tylko do odczytu.
+model ActivityLog {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  oldValue  String?
+  newValue  String?
+  createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
+  @@index([userId])
+  @@map("activity_logs")
 }
 
 // ==================== EVENTS ====================
