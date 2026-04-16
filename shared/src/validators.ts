@@ -28,6 +28,7 @@ export const createTaskSchema = z.object({
   description: z.string().optional(),
   categoryId: z.string().optional(),
   teamId: z.string().optional(),
+  assigneeId: z.string().cuid('Nieprawidłowy identyfikator użytkownika').nullable().optional(),
   priority: z.number().min(1).max(4).default(2),
   deadline: z.string().datetime().optional(),
   scheduledStart: z.string().datetime().optional(),

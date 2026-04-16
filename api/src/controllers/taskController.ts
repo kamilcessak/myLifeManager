@@ -15,6 +15,14 @@ const taskInclude = {
       icon: true,
     },
   },
+  assignee: {
+    select: {
+      id: true,
+      name: true,
+      avatarUrl: true,
+      email: true,
+    },
+  },
   attachments: {
     orderBy: { createdAt: 'desc' as const },
   },
@@ -34,6 +42,7 @@ const createTaskSchema = z.object({
   description: z.string().optional(),
   categoryId: z.string().optional(),
   teamId: z.string().optional(),
+  assigneeId: z.string().cuid('Invalid assignee id').nullable().optional(),
   priority: z.number().min(1).max(4).default(2),
   deadline: dateString.optional(),
   scheduledStart: dateString.optional(),
@@ -49,6 +58,7 @@ const updateTaskSchema = z.object({
   description: z.string().optional(),
   categoryId: z.string().optional(),
   teamId: z.string().optional(),
+  assigneeId: z.string().cuid('Invalid assignee id').nullable().optional(),
   priority: z.number().min(1).max(4).optional(),
   deadline: dateString.nullable().optional(),
   scheduledStart: dateString.nullable().optional(),
@@ -78,6 +88,50 @@ async function findTaskForUser(taskId: string, userId: string) {
     return null;
   }
   return task;
+}
+
+/**
+ * Validates that the given assigneeId can legally own a task in the given workspace.
+ *
+ * Rules:
+ * - Personal task (teamId === null):
+ *     the assignee MUST be the acting user. Any other id is rejected with 403.
+ * - Team task (teamId !== null):
+ *     the assignee MUST have an active TeamMember record for that team.
+ *
+ * Returns the value that should be persisted on the Task row
+ * (either the validated assigneeId or null).
+ */
+async function resolveAssigneeId(
+  requestedAssigneeId: string | null | undefined,
+  teamId: string | null,
+  actingUserId: string,
+): Promise<string | null | undefined> {
+  if (requestedAssigneeId === undefined) {
+    return undefined;
+  }
+
+  if (requestedAssigneeId === null) {
+    return null;
+  }
+
+  if (teamId === null) {
+    if (requestedAssigneeId !== actingUserId) {
+      throw new ApiError('Personal tasks can only be assigned to yourself', 403);
+    }
+    return requestedAssigneeId;
+  }
+
+  const membership = await prisma.teamMember.findUnique({
+    where: { teamId_userId: { teamId, userId: requestedAssigneeId } },
+    select: { id: true },
+  });
+
+  if (!membership) {
+    throw new ApiError('Assignee is not a member of this team', 400);
+  }
+
+  return requestedAssigneeId;
 }
 
 async function requireTeamAccessOr403(
@@ -211,6 +265,9 @@ export async function getTaskById(req: Request, res: Response, next: NextFunctio
       where: { id: task.id },
       include: {
         category: true,
+        assignee: {
+          select: { id: true, name: true, avatarUrl: true, email: true },
+        },
         attachments: { orderBy: { createdAt: 'desc' } },
       },
     });
@@ -243,6 +300,12 @@ export async function createTask(req: Request, res: Response, next: NextFunction
       await ensureCategoryMatchesWorkspace(userId, data.categoryId, workspaceTeamId);
     }
 
+    const resolvedAssigneeId = await resolveAssigneeId(
+      data.assigneeId,
+      workspaceTeamId,
+      userId,
+    );
+
     const task = await prisma.task.create({
       data: {
         title: data.title,
@@ -257,6 +320,7 @@ export async function createTask(req: Request, res: Response, next: NextFunction
         imageUrl: data.imageUrl,
         userId,
         teamId: workspaceTeamId,
+        assigneeId: resolvedAssigneeId ?? null,
         reminderMinutes: data.reminderMinutes ?? null,
         reminderSent: false,
       },
@@ -303,16 +367,43 @@ export async function updateTask(req: Request, res: Response, next: NextFunction
       await ensureCategoryMatchesWorkspace(userId, categoryToValidate, nextTeamId);
     }
 
+    // Resolve assignee against the effective (post-update) workspace.
+    // If the workspace itself changes and the caller didn't touch assigneeId,
+    // we must re-validate the existing assignee against the new workspace,
+    // nullifying it if it no longer belongs.
+    const workspaceChanged =
+      data.teamId !== undefined && (existingTask.teamId ?? null) !== nextTeamId;
+
+    let resolvedAssigneeId: string | null | undefined;
+    if (data.assigneeId !== undefined) {
+      resolvedAssigneeId = await resolveAssigneeId(data.assigneeId, nextTeamId, userId);
+    } else if (workspaceChanged && existingTask.assigneeId) {
+      try {
+        resolvedAssigneeId = await resolveAssigneeId(
+          existingTask.assigneeId,
+          nextTeamId,
+          userId,
+        );
+      } catch {
+        resolvedAssigneeId = null;
+      }
+    } else {
+      resolvedAssigneeId = undefined;
+    }
+
     const shouldResetReminder =
       data.reminderMinutes !== undefined ||
       data.scheduledStart !== undefined ||
       data.deadline !== undefined;
 
+    const { assigneeId: _ignoredAssigneeId, ...restData } = data;
+
     const task = await prisma.task.update({
       where: { id: req.params.id },
       data: {
-        ...data,
+        ...restData,
         teamId: data.teamId !== undefined ? data.teamId ?? null : undefined,
+        assigneeId: resolvedAssigneeId,
         deadline: data.deadline ? new Date(data.deadline) : data.deadline === null ? null : undefined,
         scheduledStart: data.scheduledStart
           ? new Date(data.scheduledStart)

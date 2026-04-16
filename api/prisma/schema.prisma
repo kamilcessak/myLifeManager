@@ -74,7 +74,8 @@ model User {
 
   // Relations
   categories         Category[]
-  tasks              Task[]
+  tasks              Task[]             @relation("TaskOwner")
+  assignedTasks      Task[]             @relation("TaskAssignee")
   events             Event[]
   teamMembers        TeamMember[]
   attachmentsPending Attachment[]       @relation("UserPendingAttachments")
@@ -161,7 +162,9 @@ model Task {
 
   // Relations
   userId      String
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User         @relation("TaskOwner", fields: [userId], references: [id], onDelete: Cascade)
+  assigneeId  String?
+  assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   teamId      String?
   team        Team?        @relation(fields: [teamId], references: [id], onDelete: Cascade)
   categoryId  String?
@@ -174,6 +177,8 @@ model Task {
   @@index([reminderSent, scheduledStart])
   @@index([reminderSent, deadline])
   @@index([userId, teamId])
+  @@index([assigneeId])
+  @@index([teamId, assigneeId])
   @@map("tasks")
 }
 
