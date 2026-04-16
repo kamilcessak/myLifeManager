@@ -6,7 +6,7 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import type { Team, TeamInvitation } from 'shared';
-import { teamsApi, type TeamMemberApiRow } from '../lib/api';
+import { api, teamsApi, type TeamMemberApiRow } from '../lib/api';
 
 /** Team list item returned by GET /api/teams (membership metadata from API). */
 export type TeamListItem = Team & {
@@ -16,12 +16,39 @@ export type TeamListItem = Team & {
 
 const TEAMS_QUERY_KEY = ['teams'] as const;
 
+function parseTeamsFromResponseBody(body: unknown): TeamListItem[] {
+  if (!body || typeof body !== 'object') return [];
+  const root = body as Record<string, unknown>;
+  const data = root.data;
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const teams = (data as Record<string, unknown>).teams;
+    if (Array.isArray(teams)) return teams as TeamListItem[];
+  }
+  if (Array.isArray(root.teams)) return root.teams as TeamListItem[];
+  return [];
+}
+
+function parseCreatedTeamFromResponseBody(body: unknown): Team {
+  if (!body || typeof body !== 'object') {
+    throw new Error('Nieprawidłowa odpowiedź serwera.');
+  }
+  const root = body as Record<string, unknown>;
+  const data = root.data;
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const team = (data as Record<string, unknown>).team;
+    if (team && typeof team === 'object' && typeof (team as Team).id === 'string') {
+      return team as Team;
+    }
+  }
+  throw new Error('Nieprawidłowa odpowiedź serwera.');
+}
+
 export function useTeams(): UseQueryResult<TeamListItem[], Error> {
   return useQuery({
     queryKey: TEAMS_QUERY_KEY,
     queryFn: async (): Promise<TeamListItem[]> => {
-      const response = await teamsApi.list();
-      return response.data.data.teams as TeamListItem[];
+      const response = await api.get('/teams');
+      return parseTeamsFromResponseBody(response.data);
     },
   });
 }
@@ -82,8 +109,8 @@ export function useCreateTeamMutation(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ name }) => {
-      const response = await teamsApi.create({ name });
-      return response.data.data.team;
+      const response = await api.post('/teams', { name });
+      return parseCreatedTeamFromResponseBody(response.data);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: TEAMS_QUERY_KEY });

@@ -86,8 +86,17 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
   });
 
   const moveDeadlineToTodayMutation = useMutation({
-    mutationFn: ({ id, deadlineIso }: { id: string; deadlineIso: string }) =>
-      tasksApi.update(id, { deadline: deadlineIso }),
+    mutationFn: async ({ id, deadlineIso, scheduledStart, scheduledEnd }: {
+      id: string;
+      deadlineIso: string;
+      scheduledStart?: string;
+      scheduledEnd?: string;
+    }) => {
+      await tasksApi.update(id, { deadline: deadlineIso });
+      if (scheduledStart && scheduledEnd) {
+        await tasksApi.schedule(id, { scheduledStart, scheduledEnd });
+      }
+    },
     onError: () => {
       toast.error('Nie udało się przesunąć terminu');
     },
@@ -122,7 +131,22 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
       month: today.getMonth(),
       date: today.getDate(),
     });
-    moveDeadlineToTodayMutation.mutate({ id: task.id, deadlineIso: next.toISOString() });
+
+    const now = new Date();
+    const roundedMinutes = Math.ceil(now.getMinutes() / 15) * 15;
+    const scheduledStart = new Date(now);
+    scheduledStart.setMinutes(roundedMinutes, 0, 0);
+    if (roundedMinutes >= 60) {
+      scheduledStart.setHours(scheduledStart.getHours() + 1, 0, 0, 0);
+    }
+    const scheduledEnd = new Date(scheduledStart.getTime() + 60 * 60 * 1000);
+
+    moveDeadlineToTodayMutation.mutate({
+      id: task.id,
+      deadlineIso: next.toISOString(),
+      scheduledStart: scheduledStart.toISOString(),
+      scheduledEnd: scheduledEnd.toISOString(),
+    });
   };
 
   const handleToggleComplete = (taskId: string, currentStatus: boolean) => {

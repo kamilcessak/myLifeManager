@@ -1,6 +1,7 @@
 import axios from "axios";
 import type { Team, TeamInvitation, TeamRole } from "shared";
 import { SearchResult, type Attachment } from "../types";
+import { clearClientSession } from "./clearClientSession";
 
 export type TeamMemberApiRow = {
   id: string;
@@ -41,6 +42,7 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem("token");
+      clearClientSession();
       window.location.href = "/login";
     }
     return Promise.reject(error);
@@ -254,4 +256,5 @@ export const searchApi = {
     }),
 };
 
+export { api };
 export default api;

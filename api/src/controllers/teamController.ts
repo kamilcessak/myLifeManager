@@ -16,32 +16,26 @@ export async function createTeam(req: Request, res: Response, next: NextFunction
     const { name } = req.body as { name: string };
     const userId = req.user!.id;
 
-    const team = await prisma.$transaction(async (tx) => {
-      const createdTeam = await tx.team.create({
-        data: { name },
-      });
-
-      await tx.teamMember.create({
-        data: {
-          teamId: createdTeam.id,
-          userId,
-          role: TeamRole.OWNER,
+    const team = await prisma.team.create({
+      data: {
+        name,
+        members: {
+          create: {
+            userId,
+            role: TeamRole.OWNER,
+          },
         },
-      });
-
-      await tx.category.create({
-        data: {
-          name: 'Ogólne',
-          color: '#64748B',
-          icon: 'folder-kanban',
-          userId,
-          teamId: createdTeam.id,
-          isDefault: true,
-          order: 0,
+        categories: {
+          create: {
+            name: 'Ogólne',
+            color: '#64748B',
+            icon: 'folder-kanban',
+            userId,
+            isDefault: true,
+            order: 0,
+          },
         },
-      });
-
-      return createdTeam;
+      },
     });
 
     res.status(201).json({

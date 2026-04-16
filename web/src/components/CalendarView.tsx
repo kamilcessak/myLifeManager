@@ -13,9 +13,6 @@ import {
   subDays,
   startOfDay,
   endOfDay,
-  startOfWeek,
-  endOfWeek,
-  areIntervalsOverlapping,
 } from 'date-fns';
 import { tasksApi, eventsApi } from '../lib/api';
 import { Task, Event, CalendarItem } from '../types';
@@ -46,8 +43,6 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
   const queryClient = useQueryClient();
   
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [fcViewType, setFcViewType] = useState('timeGridWeek');
-  const [weekAllDayExpanded, setWeekAllDayExpanded] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [selectedDateRange, setSelectedDateRange] = useState<CalendarSlotSelection | null>(null);
@@ -353,20 +348,24 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
     }
   }, []);
 
+  const scrollToCurrentTime = useCallback(() => {
+    const indicator = document.querySelector('.fc-timegrid-now-indicator-line') as HTMLElement | null;
+    if (indicator) {
+      indicator.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, []);
+
+  const handleTodayClick = useCallback(() => {
+    const calendarApi = calendarRef.current?.getApi();
+    if (!calendarApi) return;
+    calendarApi.today();
+    setTimeout(scrollToCurrentTime, 100);
+  }, [scrollToCurrentTime]);
+
   // Handle date navigation
   const handleDatesSet = useCallback((dateInfo: { start: Date; end: Date; view: { currentStart: Date; type: string } }) => {
     setCurrentDate(dateInfo.view.currentStart);
-    setFcViewType(dateInfo.view.type);
   }, []);
-
-  const weekRangeKey = useMemo(
-    () => startOfWeek(currentDate, { weekStartsOn: 1 }).getTime(),
-    [currentDate],
-  );
-
-  useEffect(() => {
-    setWeekAllDayExpanded(false);
-  }, [fcViewType, weekRangeKey]);
 
   const focusFirstTaskInDayView = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -462,45 +461,8 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
     });
   }, [calendarData, activeCategory]);
 
-  const weekAllDayExcess = useMemo(() => {
-    if (fcViewType !== 'timeGridWeek') return 0;
-    const ws = startOfWeek(currentDate, { weekStartsOn: 1 });
-    const we = endOfWeek(currentDate, { weekStartsOn: 1 });
-    const n = filteredCalendarItems.filter(
-      (item) =>
-        item.allDay &&
-        areIntervalsOverlapping(
-          { start: item.start, end: item.end },
-          { start: ws, end: we },
-          { inclusive: true },
-        ),
-    ).length;
-    return Math.max(0, n - 2);
-  }, [fcViewType, currentDate, filteredCalendarItems]);
-
   const calendarEvents = useMemo(() => {
-    let items = filteredCalendarItems;
-
-    if (fcViewType === 'timeGridWeek' && !weekAllDayExpanded) {
-      const ws = startOfWeek(currentDate, { weekStartsOn: 1 });
-      const we = endOfWeek(currentDate, { weekStartsOn: 1 });
-      const allDayInWeek = filteredCalendarItems.filter(
-        (item) =>
-          item.allDay &&
-          areIntervalsOverlapping(
-            { start: item.start, end: item.end },
-            { start: ws, end: we },
-            { inclusive: true },
-          ),
-      );
-      if (allDayInWeek.length > 2) {
-        const sorted = [...allDayInWeek].sort((a, b) => a.start.getTime() - b.start.getTime());
-        const drop = new Set(sorted.slice(2).map((i) => i.id));
-        items = filteredCalendarItems.filter((item) => !drop.has(item.id));
-      }
-    }
-
-    return items.map((item) => ({
+    return filteredCalendarItems.map((item) => ({
       id: item.id,
       title: item.title,
       start: item.start,
@@ -514,40 +476,25 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
         data: item.data,
       },
     }));
-  }, [filteredCalendarItems, fcViewType, weekAllDayExpanded, currentDate]);
+  }, [filteredCalendarItems]);
 
   return (
     <div className="h-full flex flex-col">
       {/* Calendar */}
-      <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-4">
-        {fcViewType === 'timeGridWeek' && weekAllDayExcess > 0 ? (
-          <div className="flex shrink-0 justify-end">
-            {!weekAllDayExpanded ? (
-              <button
-                type="button"
-                onClick={() => setWeekAllDayExpanded(true)}
-                className="rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-2.5 py-1 text-xs font-semibold text-blue-600 shadow-sm transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
-              >
-                +{weekAllDayExcess} więcej
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setWeekAllDayExpanded(false)}
-                className="rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)]"
-              >
-                Zwiń całodniowe
-              </button>
-            )}
-          </div>
-        ) : null}
+      <div className="flex min-h-0 flex-1 flex-col p-4">
         <div className="min-h-0 flex-1">
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView="timeGridWeek"
+          customButtons={{
+            todayScroll: {
+              text: 'Dziś',
+              click: handleTodayClick,
+            },
+          }}
           headerToolbar={{
-            left: 'prev,next today',
+            left: 'prev,next todayScroll',
             center: 'title',
             right: 'dayGridMonth,timeGridWeek,timeGridDay',
           }}
@@ -576,6 +523,7 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
             minute: '2-digit',
             hour12: false,
           }}
+          nowIndicator={true}
           eventContent={renderEventContent}
           slotLabelFormat={{
             hour: '2-digit',
@@ -583,14 +531,16 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
             hour12: false,
           }}
           buttonText={{
-            today: 'Dziś',
             month: 'Miesiąc',
             week: 'Tydzień',
             day: 'Dzień',
           }}
           allDayText="Cały dzień"
           noEventsText="Brak wydarzeń"
-          dayMaxEvents={MONTH_DAY_EVENT_LIMIT}
+          views={{
+            dayGridMonth: { dayMaxEvents: MONTH_DAY_EVENT_LIMIT },
+            timeGridWeek: { dayMaxEvents: 2 },
+          }}
           moreLinkContent={(arg) => `Zobacz więcej (+${arg.num})`}
           moreLinkHint={(count) => `Zobacz ${count} dodatkowych pozycji`}
           moreLinkClick={handleMoreLinkClick}

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { authApi } from '../lib/api';
+import { clearClientSession } from '../lib/clearClientSession';
 
 interface User {
   id: string;
@@ -30,7 +31,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (email, password) => {
     const response = await authApi.login({ email, password });
     const { user, token } = response.data.data;
-    
+
+    clearClientSession();
     localStorage.setItem('token', token);
     set({ user, token, isAuthenticated: true });
   },
@@ -38,13 +40,15 @@ export const useAuthStore = create<AuthState>((set) => ({
   register: async (email, password, name) => {
     const response = await authApi.register({ email, password, name });
     const { user, token } = response.data.data;
-    
+
+    clearClientSession();
     localStorage.setItem('token', token);
     set({ user, token, isAuthenticated: true });
   },
   
   logout: () => {
     localStorage.removeItem('token');
+    clearClientSession();
     set({ user: null, token: null, isAuthenticated: false });
   },
   
@@ -66,6 +70,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       });
     } catch {
       localStorage.removeItem('token');
+      clearClientSession();
       set({
         user: null,
         token: null,

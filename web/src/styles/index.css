@@ -256,6 +256,17 @@ html.dark .fc .fc-daygrid-more-link {
   @apply text-blue-200 bg-blue-500/20 hover:bg-blue-500/30;
 }
 
+/* Week view all-day "more" link */
+.fc-timeGridWeek-view .fc-more-link,
+.fc-timeGridDay-view .fc-more-link {
+  @apply inline-flex items-center px-2 py-0.5 mt-0.5 rounded text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 cursor-pointer;
+}
+
+html.dark .fc-timeGridWeek-view .fc-more-link,
+html.dark .fc-timeGridDay-view .fc-more-link {
+  @apply text-blue-200 bg-blue-500/20 hover:bg-blue-500/30;
+}
+
 /* ========== TASK vs EVENT distinction ========== */
 
 /* Task card in calendar */
@@ -393,6 +404,36 @@ html.dark .fc .fc-daygrid-more-link {
   display: block;
   -webkit-line-clamp: unset;
   line-clamp: unset;
+}
+
+/* ========== NOW INDICATOR (current time line) ========== */
+.fc .fc-timegrid-now-indicator-line {
+  border-color: #ef4444;
+  border-width: 2px;
+  z-index: 4;
+}
+
+.fc .fc-timegrid-now-indicator-line::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  background-color: #ef4444;
+  border-radius: 50%;
+}
+
+.fc .fc-timegrid-now-indicator-arrow {
+  display: none;
+}
+
+html.dark .fc .fc-timegrid-now-indicator-line {
+  border-color: #f87171;
+}
+
+html.dark .fc .fc-timegrid-now-indicator-line::before {
+  background-color: #f87171;
 }
 
 /* Drag & Drop styles */
