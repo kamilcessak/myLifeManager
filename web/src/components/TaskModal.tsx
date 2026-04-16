@@ -12,7 +12,19 @@ import { useTheme } from '../context/ThemeContext';
 import { useEscapeToClose } from '../hooks/useEscapeToClose';
 import toast from 'react-hot-toast';
 import axios from 'axios';
-import { format, addHours, startOfHour, startOfDay, endOfDay, set as setDateParts, parse as parseDate } from 'date-fns';
+import {
+  format,
+  addHours,
+  addDays,
+  addWeeks,
+  startOfHour,
+  startOfDay,
+  endOfDay,
+  set as setDateParts,
+  parse as parseDate,
+  startOfWeek,
+  startOfToday,
+} from 'date-fns';
 import { pl } from 'date-fns/locale';
 import DatePicker from './DatePicker';
 import TimePicker, { firstSlotAfter, optionMinutes } from './TimePicker';
@@ -393,6 +405,31 @@ export default function TaskModal({
     { value: 4, label: 'Pilne' },
   ];
 
+  const applyQuickDeadline = (kind: 'today' | 'tomorrow' | 'nextWeek') => {
+    const today = startOfToday();
+    let dayStart: Date;
+    if (kind === 'today') {
+      dayStart = today;
+    } else if (kind === 'tomorrow') {
+      dayStart = addDays(today, 1);
+    } else {
+      const thisWeekMonday = startOfWeek(today, { weekStartsOn: 1 });
+      dayStart = addWeeks(thisWeekMonday, 1);
+    }
+    const prevT = formData.deadline ? format(new Date(formData.deadline), 'HH:mm') : '09:00';
+    const [h, m] = prevT.split(':').map((x) => parseInt(x, 10));
+    const combined = setDateParts(dayStart, {
+      hours: Number.isFinite(h) ? h : 9,
+      minutes: Number.isFinite(m) ? m : 0,
+      seconds: 0,
+      milliseconds: 0,
+    });
+    setFormData((prev) => ({
+      ...prev,
+      deadline: format(combined, "yyyy-MM-dd'T'HH:mm"),
+    }));
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content task-modal-content animate-fade-in" onClick={(e) => e.stopPropagation()}>
@@ -649,6 +686,31 @@ export default function TaskModal({
                 />
               </div>
             )}
+            {mode !== 'view' ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => applyQuickDeadline('today')}
+                  className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-800 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-blue-500/40 dark:hover:bg-blue-500/15 dark:hover:text-blue-100"
+                >
+                  Dzisiaj
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyQuickDeadline('tomorrow')}
+                  className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-800 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-blue-500/40 dark:hover:bg-blue-500/15 dark:hover:text-blue-100"
+                >
+                  Jutro
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyQuickDeadline('nextWeek')}
+                  className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-800 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-blue-500/40 dark:hover:bg-blue-500/15 dark:hover:text-blue-100"
+                >
+                  W przyszłym tygodniu
+                </button>
+              </div>
+            ) : null}
           </div>
 
           {/* Reminder */}

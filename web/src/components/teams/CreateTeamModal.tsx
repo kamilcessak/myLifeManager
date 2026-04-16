@@ -92,7 +92,11 @@ export default function CreateTeamModal({ isOpen, onClose }: CreateTeamModalProp
             />
           </div>
           {formError ? <p className="text-sm text-red-600 dark:text-red-400">{formError}</p> : null}
-          <Button type="submit" className="w-full" disabled={createMutation.isPending}>
+          <Button
+            type="submit"
+            className="w-full border-0 bg-blue-500 text-white shadow-sm hover:bg-blue-600"
+            disabled={createMutation.isPending}
+          >
             {createMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

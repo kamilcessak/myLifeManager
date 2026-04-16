@@ -14,6 +14,7 @@ import {
   Check,
   Edit2,
   Trash2,
+  CalendarClock,
 } from 'lucide-react';
 import { tasksApi, categoriesApi } from '../lib/api';
 import { Task, Category } from '../types';
@@ -36,6 +37,7 @@ import {
   endOfDay,
   isBefore,
   isAfter,
+  set as setDateParts,
 } from 'date-fns';
 
 interface TaskSection {
@@ -83,6 +85,20 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
     },
   });
 
+  const moveDeadlineToTodayMutation = useMutation({
+    mutationFn: ({ id, deadlineIso }: { id: string; deadlineIso: string }) =>
+      tasksApi.update(id, { deadline: deadlineIso }),
+    onError: () => {
+      toast.error('Nie udało się przesunąć terminu');
+    },
+    onSuccess: () => {
+      toast.success('Termin ustawiony na dziś');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+
   const categories = categoriesData || [];
   const rawTasks = tasksData || [];
   const tasks = useMemo(() => {
@@ -96,6 +112,18 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
 
     return rawTasks.filter((task) => task.categoryId === activeCategory || task.category?.name === activeCategory);
   }, [rawTasks, activeCategory]);
+
+  const moveDeadlineToToday = (task: Task) => {
+    if (!task.deadline) return;
+    const prev = new Date(task.deadline);
+    const today = startOfToday();
+    const next = setDateParts(prev, {
+      year: today.getFullYear(),
+      month: today.getMonth(),
+      date: today.getDate(),
+    });
+    moveDeadlineToTodayMutation.mutate({ id: task.id, deadlineIso: next.toISOString() });
+  };
 
   const handleToggleComplete = (taskId: string, currentStatus: boolean) => {
     const nextIsCompleted = !currentStatus;
@@ -445,12 +473,33 @@ export default function TaskInbox({ activeCategory, onCategoryChange }: TaskInbo
                 {!collapsedSections.has(section.id) && (
                   <div className="space-y-2">
                     {section.tasks.map((task) => (
-                      <TaskCard
+                      <div
                         key={task.id}
-                        task={task}
-                        onToggleComplete={handleToggleComplete}
-                        onEdit={handleEditTask}
-                      />
+                        className={cn('flex gap-1.5', section.id === 'overdue' ? 'items-center' : 'items-stretch')}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <TaskCard
+                            task={task}
+                            onToggleComplete={handleToggleComplete}
+                            onEdit={handleEditTask}
+                          />
+                        </div>
+                        {section.id === 'overdue' && task.deadline ? (
+                          <button
+                            type="button"
+                            title="Przesuń na dziś"
+                            aria-label="Przesuń na dziś"
+                            disabled={moveDeadlineToTodayMutation.isPending}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveDeadlineToToday(task);
+                            }}
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-500/15 dark:hover:text-blue-300"
+                          >
+                            <CalendarClock className="h-4 w-4" />
+                          </button>
+                        ) : null}
+                      </div>
                     ))}
                   </div>
                 )}

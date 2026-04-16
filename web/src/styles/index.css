@@ -288,9 +288,9 @@ html.dark .fc .fc-daygrid-more-link {
   font-weight: 500;
 }
 
-/* Completed task in calendar */
+/* Completed task in calendar — kolor tła z JS (zielony); bez „wyprania” całego bloku */
 .fc-event-task-completed {
-  opacity: 0.4;
+  opacity: 0.92;
 }
 
 /* For completed dot events */
@@ -414,7 +414,7 @@ html.dark .fc .fc-daygrid-more-link {
   background-color: var(--app-surface);
   border-color: var(--app-border);
   color: #111827;
-  @apply rounded-lg border p-3 shadow-sm hover:shadow-md transition duration-150 cursor-grab active:cursor-grabbing;
+  @apply rounded-lg border px-3 py-2 shadow-sm hover:shadow-md transition duration-150 cursor-grab active:cursor-grabbing;
 }
 
 html.light .task-card:hover {
@@ -461,7 +461,12 @@ html.light .task-card .task-title {
 }
 
 .task-info-chip-priority-4 {
-  @apply bg-red-100 text-red-900 dark:bg-red-500/20 dark:text-red-300;
+  @apply bg-rose-100 dark:bg-red-500/20;
+  color: #7f1d1d;
+}
+
+html.dark .task-info-chip-priority-4 {
+  color: #fecaca;
 }
 
 .task-info-chip-priority-3 {

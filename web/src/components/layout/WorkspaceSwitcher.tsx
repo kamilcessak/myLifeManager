@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Loader2,
   PlusCircle,
+  RefreshCw,
   Settings,
   User,
   UserPlus,
@@ -22,7 +23,7 @@ const PERSONAL_WORKSPACE_VALUE = '__mlm_personal__';
 export default function WorkspaceSwitcher() {
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
-  const { data: teams, isLoading, isError } = useTeams();
+  const { data: teams, isLoading, isError, isFetching, refetch } = useTeams();
 
   const [open, setOpen] = useState(false);
   const [teamManagerOpen, setTeamManagerOpen] = useState(false);
@@ -127,8 +128,18 @@ export default function WorkspaceSwitcher() {
                 ) : null}
 
                 {isError ? (
-                  <div className="px-2 py-2 text-xs text-red-600 dark:text-red-400">
-                    Nie udało się wczytać zespołów
+                  <div className="flex items-center gap-2 px-2 py-2 text-xs text-red-600 dark:text-red-400">
+                    <span className="min-w-0 flex-1 leading-snug">Nie udało się wczytać zespołów</span>
+                    <button
+                      type="button"
+                      onClick={() => void refetch()}
+                      disabled={isFetching}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-blue-600 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-60 dark:text-blue-400"
+                      title="Spróbuj ponownie"
+                    >
+                      <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} aria-hidden />
+                      <span className="hidden sm:inline">Spróbuj ponownie</span>
+                    </button>
                   </div>
                 ) : null}
               </div>

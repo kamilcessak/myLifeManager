@@ -5,7 +5,18 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin, { Draggable } from '@fullcalendar/interaction';
 import { EventClickArg, EventDropArg, DateSelectArg, EventContentArg } from '@fullcalendar/core';
-import { startOfMonth, endOfMonth, addMonths, subMonths, subDays, startOfDay, endOfDay } from 'date-fns';
+import {
+  startOfMonth,
+  endOfMonth,
+  addMonths,
+  subMonths,
+  subDays,
+  startOfDay,
+  endOfDay,
+  startOfWeek,
+  endOfWeek,
+  areIntervalsOverlapping,
+} from 'date-fns';
 import { tasksApi, eventsApi } from '../lib/api';
 import { Task, Event, CalendarItem } from '../types';
 import { useCategories } from '../hooks/useCategories';
@@ -23,6 +34,10 @@ interface CalendarViewProps {
   activeCategory: string | 'all' | 'none';
 }
 
+/** Zielony tylko dla ukończonych; oczekujące — brand (niezależnie od kategorii). */
+const CAL_COMPLETED_TASK_BG = '#16a34a';
+const CAL_PENDING_TASK_BG = '#3b82f6';
+
 export default function CalendarView({ activeCategory }: CalendarViewProps) {
   const MONTH_DAY_EVENT_LIMIT = 4;
   const calendarRef = useRef<FullCalendar>(null);
@@ -31,6 +46,8 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
   const queryClient = useQueryClient();
   
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [fcViewType, setFcViewType] = useState('timeGridWeek');
+  const [weekAllDayExpanded, setWeekAllDayExpanded] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [selectedDateRange, setSelectedDateRange] = useState<CalendarSlotSelection | null>(null);
@@ -66,7 +83,7 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
             end,
             allDay: !!task.scheduledAllDay,
             type: 'task' as const,
-            color: task.category?.color || '#6b7280',
+            color: task.isCompleted ? CAL_COMPLETED_TASK_BG : CAL_PENDING_TASK_BG,
             data: task,
             classNames: ['fc-event-task', task.isCompleted ? 'fc-event-task-completed' : ''].filter(Boolean),
           };
@@ -337,9 +354,19 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
   }, []);
 
   // Handle date navigation
-  const handleDatesSet = useCallback((dateInfo: { start: Date; end: Date; view: { currentStart: Date } }) => {
+  const handleDatesSet = useCallback((dateInfo: { start: Date; end: Date; view: { currentStart: Date; type: string } }) => {
     setCurrentDate(dateInfo.view.currentStart);
+    setFcViewType(dateInfo.view.type);
   }, []);
+
+  const weekRangeKey = useMemo(
+    () => startOfWeek(currentDate, { weekStartsOn: 1 }).getTime(),
+    [currentDate],
+  );
+
+  useEffect(() => {
+    setWeekAllDayExpanded(false);
+  }, [fcViewType, weekRangeKey]);
 
   const focusFirstTaskInDayView = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -371,8 +398,10 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
     const isTask = arg.event.extendedProps.type === 'task';
     const taskData = isTask ? (arg.event.extendedProps.data as Task) : null;
 
+    const fullTitle = arg.event.title;
+
     return (
-      <div className="fc-item-content">
+      <div className="fc-item-content" title={fullTitle}>
         {isTask && taskData ? (
           <button
             type="button"
@@ -391,8 +420,14 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
           {isTask ? <CheckSquare className="w-3 h-3" /> : <CalendarCheck className="w-3 h-3" />}
         </span>
         <div className="fc-item-text">
-          {arg.timeText ? <span className="fc-item-time">{arg.timeText}</span> : null}
-          <span className="fc-item-title">{arg.event.title}</span>
+          {arg.timeText ? (
+            <span className="fc-item-time" title={fullTitle}>
+              {arg.timeText}
+            </span>
+          ) : null}
+          <span className="fc-item-title" title={fullTitle}>
+            {arg.event.title}
+          </span>
         </div>
       </div>
     );
@@ -410,40 +445,103 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
     });
   }, [handleEventResize]);
 
-  const filteredCalendarItems = (calendarData || []).filter((item) => {
-    const itemCategoryId = (item.data as Task | Event).categoryId;
-    const itemCategoryName = (item.data as Task | Event).category?.name;
+  const filteredCalendarItems = useMemo(() => {
+    return (calendarData || []).filter((item) => {
+      const itemCategoryId = (item.data as Task | Event).categoryId;
+      const itemCategoryName = (item.data as Task | Event).category?.name;
 
-    if (activeCategory === 'all') {
-      return true;
+      if (activeCategory === 'all') {
+        return true;
+      }
+
+      if (activeCategory === 'none') {
+        return !itemCategoryId;
+      }
+
+      return itemCategoryId === activeCategory || itemCategoryName === activeCategory;
+    });
+  }, [calendarData, activeCategory]);
+
+  const weekAllDayExcess = useMemo(() => {
+    if (fcViewType !== 'timeGridWeek') return 0;
+    const ws = startOfWeek(currentDate, { weekStartsOn: 1 });
+    const we = endOfWeek(currentDate, { weekStartsOn: 1 });
+    const n = filteredCalendarItems.filter(
+      (item) =>
+        item.allDay &&
+        areIntervalsOverlapping(
+          { start: item.start, end: item.end },
+          { start: ws, end: we },
+          { inclusive: true },
+        ),
+    ).length;
+    return Math.max(0, n - 2);
+  }, [fcViewType, currentDate, filteredCalendarItems]);
+
+  const calendarEvents = useMemo(() => {
+    let items = filteredCalendarItems;
+
+    if (fcViewType === 'timeGridWeek' && !weekAllDayExpanded) {
+      const ws = startOfWeek(currentDate, { weekStartsOn: 1 });
+      const we = endOfWeek(currentDate, { weekStartsOn: 1 });
+      const allDayInWeek = filteredCalendarItems.filter(
+        (item) =>
+          item.allDay &&
+          areIntervalsOverlapping(
+            { start: item.start, end: item.end },
+            { start: ws, end: we },
+            { inclusive: true },
+          ),
+      );
+      if (allDayInWeek.length > 2) {
+        const sorted = [...allDayInWeek].sort((a, b) => a.start.getTime() - b.start.getTime());
+        const drop = new Set(sorted.slice(2).map((i) => i.id));
+        items = filteredCalendarItems.filter((item) => !drop.has(item.id));
+      }
     }
 
-    if (activeCategory === 'none') {
-      return !itemCategoryId;
-    }
-
-    return itemCategoryId === activeCategory || itemCategoryName === activeCategory;
-  });
-
-  const calendarEvents = filteredCalendarItems.map((item) => ({
-    id: item.id,
-    title: item.title,
-    start: item.start,
-    end: item.end,
-    allDay: item.allDay,
-    backgroundColor: item.color,
-    borderColor: item.color,
-    classNames: [...(item.classNames || [])],
-    extendedProps: {
-      type: item.type,
-      data: item.data,
-    },
-  }));
+    return items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      start: item.start,
+      end: item.end,
+      allDay: item.allDay,
+      backgroundColor: item.color,
+      borderColor: item.color,
+      classNames: [...(item.classNames || [])],
+      extendedProps: {
+        type: item.type,
+        data: item.data,
+      },
+    }));
+  }, [filteredCalendarItems, fcViewType, weekAllDayExpanded, currentDate]);
 
   return (
     <div className="h-full flex flex-col">
       {/* Calendar */}
-      <div className="flex-1 p-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-4">
+        {fcViewType === 'timeGridWeek' && weekAllDayExcess > 0 ? (
+          <div className="flex shrink-0 justify-end">
+            {!weekAllDayExpanded ? (
+              <button
+                type="button"
+                onClick={() => setWeekAllDayExpanded(true)}
+                className="rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-2.5 py-1 text-xs font-semibold text-blue-600 shadow-sm transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
+              >
+                +{weekAllDayExcess} więcej
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setWeekAllDayExpanded(false)}
+                className="rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)]"
+              >
+                Zwiń całodniowe
+              </button>
+            )}
+          </div>
+        ) : null}
+        <div className="min-h-0 flex-1">
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -497,6 +595,7 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
           moreLinkHint={(count) => `Zobacz ${count} dodatkowych pozycji`}
           moreLinkClick={handleMoreLinkClick}
         />
+        </div>
       </div>
 
       {/* Event Modal */}
