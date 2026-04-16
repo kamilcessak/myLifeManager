@@ -17,6 +17,7 @@
    - [Upload obrazów (legacy)](#310-upload-obrazów-legacy)
    - [Zespoły i Obszary robocze (Workspaces)](#311-zespoły-i-obszary-robocze-workspaces)
    - [Przypisywanie osób (Assignee / cowork)](#31110-przypisywanie-osób-assignee--cowork)
+   - [Ustawienia profilu (Profile Settings)](#312-ustawienia-profilu-profile-settings)
 4. [Model danych](#4-model-danych)
 5. [Frontend — widoki i komponenty](#5-frontend--widoki-i-komponenty)
 6. [Pakiet współdzielony (shared)](#6-pakiet-współdzielony-shared)
@@ -79,7 +80,12 @@ Główna idea produktowa: aplikacja typu **time-blocking** — skrzynka odbiorcz
 | `/api/auth/register` | POST | Rejestracja nowego użytkownika. Walidacja Zod, hashowanie hasła bcrypt. Automatycznie tworzy dwie domyślne kategorie: **Dom** i **Firma**. Zwraca token JWT + dane użytkownika. |
 | `/api/auth/login` | POST | Logowanie email + hasło przez Passport Local. Zwraca token JWT + dane użytkownika. |
 | `/api/auth/me` | GET | Pobranie danych aktualnie zalogowanego użytkownika (wymaga JWT). |
-| `/api/auth/me` | PATCH | Aktualizacja profilu użytkownika (name, avatarUrl). Endpoint istnieje w API, ale **nie jest wykorzystywany** przez frontend. |
+| `/api/auth/me` | PATCH | Aktualizacja profilu użytkownika (name, avatarUrl). Wykorzystywany przez `ProfileTab` w `ProfileSettingsModal`. |
+| `/api/auth/me` | DELETE | Trwałe usunięcie konta użytkownika. Guard "solo-owner": jeśli użytkownik jest jedynym OWNER w zespole, w którym są inni członkowie, zwraca `400` z listą zespołów blokujących. Zespoły, w których użytkownik jest solo-ownerem (jedynym członkiem), są automatycznie usuwane razem z kontem. Operacja w transakcji Prisma — cascade `SetNull` na assignee oraz `Cascade` na tasks/events/categories/memberships. Best-effort `safeUnlink` avatara po transakcji. Zwraca `204 No Content`. |
+| `/api/auth/password` | PATCH | Zmiana hasła użytkownika. Walidacja `changePasswordSchema` (currentPassword, newPassword ≥ 8 znaków, confirmNewPassword zgodne). Weryfikuje bieżące hasło przez `bcrypt.compare`, blokuje ustawienie identycznego hasła, hashuje nowe z cost 12. |
+| `/api/auth/export` | GET | Eksport danych osobistych (RODO/GDPR). Zwraca JSON z `user`, `personal.tasks`, `personal.events`, `personal.categories` (tylko rekordy z `teamId = null`). Pole `schemaVersion: 1`, `exportedAt`. Nagłówki `Content-Disposition: attachment; filename="mlm-export-<userId>-<YYYY-MM-DD>.json"`, `Cache-Control: no-store`. |
+| `/api/auth/avatar` | POST | Upload avatara użytkownika (multipart `avatar`). Cropping po stronie klienta, server-side cleanup starego pliku awatara. |
+| `/api/auth/avatar` | DELETE | Usunięcie avatara użytkownika i pliku z dysku. |
 
 **Mechanizm JWT**: Token w `Authorization: Bearer`, payload `{ sub: userId }`, domyślny czas życia 7 dni. Frontend przechowuje token w `localStorage`, automatyczny logout przy 401.
 
@@ -225,16 +231,21 @@ System powiadomień Web Push oparty na VAPID.
 
 ### 3.9 Przypomnienia (Cron)
 
-Automatyczny system przypomnień działający w tle.
+Automatyczny system przypomnień i harmonogramowych zadań housekeepingu działający w tle.
 
-**Mechanizm**:
+**Reminder cron** (`startReminderCron`):
 - **Harmonogram**: `node-cron` uruchamiany co minutę (`'* * * * *'`)
 - **Logika**: Wyszukuje zadania i wydarzenia z ustawionym `reminderMinutes` i niezaznaczonym `reminderSent`. Oblicza czas przypomnienia (start/deadline minus minuty). Jeśli aktualny czas mieści się w ±30s od czasu przypomnienia, wysyła powiadomienie web-push
 - **Routing do przypisanego** (zadania i wydarzenia): Jeśli `assigneeId` jest ustawione, powiadomienie trafia do przypisanego użytkownika. Fallback na twórcę (`userId`) jeśli brak przypisania. Selekcja Prisma obejmuje `assigneeId` i `teamId` w zapytaniu
 - **Izolacja błędów**: Każde zadanie/wydarzenie przetwarzane w osobnym `try/catch` — błąd wysyłki dla jednego elementu nie przerywa przetwarzania pozostałych
 - **Oznaczanie**: Po wysłaniu ustawia `reminderSent: true`
-- **Czyszczenie**: Automatycznie usuwa martwe subskrypcje (status 410/404)
+- **Czyszczenie subskrypcji**: Automatycznie usuwa martwe subskrypcje (status 410/404)
 - **Warunek**: Działa tylko gdy skonfigurowane są klucze VAPID
+
+**Invitation cleanup cron** (`startInvitationCleanupCron`):
+- **Harmonogram**: Raz dziennie o północy czasu serwera (`'0 0 * * *'`), plus jednokrotne uruchomienie przy starcie procesu (żeby nie przenosić przeterminowanych rekordów między deploymentami)
+- **Logika**: `deleteMany` wszystkich rekordów `TeamInvitation` ze statusem `PENDING` i `expiresAt < now()`. Zaproszenia ze statusem `ACCEPTED` pozostają jako historyczny ślad (trail)
+- **Izolacja błędów**: Błędy logowane do konsoli, nie przerywają działania serwera
 
 ---
 
@@ -267,12 +278,18 @@ Dzięki temu istniejąca logika CRUD pozostaje, a jedyną zmianą jest dodanie w
 |----------|--------|------|
 | `/api/teams` | POST | Tworzenie nowego zespołu. W transakcji: tworzy `Team`, dodaje twórcę jako `OWNER` w `TeamMember`, tworzy domyślną kategorię "Ogólne" dla zespołu. Walidacja body przez `createTeamSchema` z shared. |
 | `/api/teams` | GET | Lista zespołów użytkownika. Zwraca zespoły z dołączonymi polami `myRole` (rola użytkownika) i `memberSince` (data dołączenia). |
-| `/api/teams/:id/members` | GET | Lista członków zespołu. Wymaga członkostwa (verifyTeamAccess). Zwraca dane użytkowników (id, email, name, avatarUrl) z rolą i datą dołączenia. |
+| `/api/teams/:id` | PATCH | Aktualizacja nazwy zespołu. **Tylko OWNER**. Walidacja `updateTeamSchema` (name: trim, 2–100 znaków). |
+| `/api/teams/:id` | DELETE | Usunięcie zespołu. **Tylko OWNER**. Cascade usuwa wszystkich członków, zaproszenia, zadania, wydarzenia i kategorie zespołu. |
+| `/api/teams/:id/members` | GET | Lista członków zespołu. Wymaga członkostwa (`verifyTeamAccess`). Zwraca dane użytkowników (id, email, name, avatarUrl) z rolą i datą dołączenia. |
+| `/api/teams/:id/members/:userId` | PATCH | Zmiana roli członka zespołu (OWNER ↔ MEMBER). **Tylko OWNER**. Walidacja `updateMemberRoleSchema`. Guard: nie można zdegradować ostatniego OWNER do MEMBER (`countTeamOwners` ≤ 1 → 400). Idempotentny gdy rola już jest taka sama. |
+| `/api/teams/:id/members/:targetUserId` | DELETE | Usunięcie członka zespołu. Obsługuje dwa scenariusze: **kick** (OWNER usuwa innego członka — wymaga roli OWNER) i **leave** (użytkownik opuszcza zespół — wymaga tylko członkostwa, `isSelf`). Guard: ostatni OWNER nie może zostać usunięty (wymaga przekazania własności lub usunięcia zespołu). Transakcja: `null`-uje `assigneeId` we wszystkich zadaniach/wydarzeniach zespołu przypisanych do usuwanego użytkownika, następnie usuwa `TeamMember`. |
 | `/api/teams/:id/invites` | POST | Generowanie zaproszeń. **Tylko OWNER** może wywoływać. Przyjmuje tablicę emaili, deduplikuje, generuje 8-znakowy hex code (`randomBytes(4)`). Upsert z retry (do 8 prób przy kolizji kodu P2002). Zaproszenie ważne 7 dni. |
 | `/api/teams/join` | POST | Dołączanie do zespołu kodem. Weryfikuje: kod istnieje, status PENDING, nie wygasł. Tworzy `TeamMember` z rolą MEMBER, zmienia status zaproszenia na ACCEPTED. Blokuje ponowne dołączanie. |
 
 **Mechanizm autoryzacji zespołów**:
 - `verifyTeamAccess(userId, teamId)` — utility sprawdzający istnienie `TeamMember` dla pary (teamId, userId). Rzuca `ApiError(403)` przy braku dostępu.
+- `requireOwner(userId, teamId)` — utility w `teamController` sprawdzający, czy wywołujący jest OWNER danego zespołu. Rzuca `ApiError(403)` przy braku członkostwa lub braku roli OWNER. Używany przez update/delete team, update member role i invite.
+- `countTeamOwners(teamId)` — helper liczący aktualnych OWNER w zespole. Używany do zapobiegania utracie "ostatniego właściciela" przy zmianie roli lub opuszczaniu zespołu.
 - `ensureCategoryMatchesWorkspace(userId, categoryId, teamId)` — utility weryfikujący, że kategoria przypisana do zadania/wydarzenia należy do tego samego workspace'a. Zapobiega cross-workspace przypisywaniu kategorii.
 
 #### 3.11.3 Backend — Refaktoryzacja kontrolerów
@@ -331,7 +348,11 @@ Nowy komponent `WorkspaceSwitcher` w nagłówku (`Layout`):
 |-------|------|------|
 | `CreateTeamModal` | `components/teams/CreateTeamModal.tsx` | Formularz tworzenia zespołu (pole "Nazwa zespołu"). Po sukcesie: refetch listy zespołów, automatyczne przełączenie na nowy workspace. |
 | `JoinTeamModal` | `components/teams/JoinTeamModal.tsx` | Formularz dołączania kodem zaproszenia (pole monospace). Po sukcesie: refetch zespołów, przełączenie na dołączony workspace. |
-| `TeamManagerModal` | `components/teams/TeamManagerModal.tsx` | Panel zarządzania aktywnym zespołem: lista członków z rolami, sekcja generowania zaproszeń (tylko OWNER). Pole textarea na emaile (separator: przecinek, średnik, whitespace), generowanie kodów z możliwością kopiowania do schowka. |
+| `TeamManagerModal` | `components/teams/TeamManagerModal.tsx` | Panel zarządzania aktywnym zespołem z zakładkami (tabs). Akceptuje prop `initialTab` (`'members' \| 'invites' \| 'settings'`). Zakładki `invites` i `settings` widoczne tylko dla OWNER. Zakładka samoczynnie wraca do "Members" gdy aktualna staje się niewidoczna (np. po degradacji roli). |
+| `TeamMembersTab` | `components/teams/TeamMembersTab.tsx` | Zakładka "Członkowie". Lista członków z rolą i datą dołączenia. Dla OWNER: dropdown do zmiany roli (OWNER ↔ MEMBER, blokada przy ostatnim OWNER), przycisk "Usuń z zespołu" z `ConfirmDialog`. Dla każdego użytkownika: przycisk "Opuść zespół" (leave) przy własnym rekordzie, z guardem ostatniego właściciela. |
+| `TeamInvitesTab` | `components/teams/TeamInvitesTab.tsx` | Zakładka "Zaproszenia" (OWNER only). Pole textarea na emaile (separator: przecinek, średnik, whitespace), przycisk "Wygeneruj zaproszenia" → lista wygenerowanych kodów z akcją kopiowania do schowka. |
+| `TeamSettingsTab` | `components/teams/TeamSettingsTab.tsx` | Zakładka "Ustawienia" (OWNER only). Formularz edycji nazwy zespołu (`useUpdateTeamMutation`) i "strefa niebezpieczna" z akcją usunięcia zespołu (`useDeleteTeamMutation` + `ConfirmDialog`). Po skutecznym usunięciu: reset `activeWorkspaceId` w `useWorkspaceStore` i zamknięcie modala. |
+| `ConfirmDialog` | `components/teams/ConfirmDialog.tsx` | Generyczny reużywalny dialog potwierdzenia (title, description, `confirmLabel`, wariant `destructive`). Używany przez `TeamMembersTab` (remove/leave) i `TeamSettingsTab` (delete team). |
 
 #### 3.11.7 Frontend — Warstwa danych (hooks i query keys)
 
@@ -358,6 +379,13 @@ Nowy komponent `WorkspaceSwitcher` w nagłówku (`Layout`):
 | `useCreateTeamMutation` | `hooks/useTeams.ts` | Mutacja tworzenia zespołu z auto-refetch |
 | `useJoinTeamMutation` | `hooks/useTeams.ts` | Mutacja dołączania kodem z auto-refetch |
 | `useInviteMembersMutation` | `hooks/useTeams.ts` | Mutacja generowania zaproszeń |
+| `useUpdateTeamMutation` | `hooks/useTeams.ts` | Mutacja zmiany nazwy zespołu (PATCH `/api/teams/:id`) — invaliduje cache `['teams']` |
+| `useDeleteTeamMutation` | `hooks/useTeams.ts` | Mutacja usunięcia zespołu (DELETE `/api/teams/:id`) — invaliduje `['teams']` i `['teamMembers', teamId]` |
+| `useUpdateMemberRoleMutation` | `hooks/useTeams.ts` | Mutacja zmiany roli członka (PATCH `/api/teams/:id/members/:userId`) — invaliduje `['teamMembers', teamId]` i `['teams']` |
+| `useRemoveMemberMutation` | `hooks/useTeams.ts` | Mutacja usunięcia/opuszczenia członka (DELETE `/api/teams/:id/members/:targetUserId`) — invaliduje `['teamMembers', teamId]` i `['teams']` |
+| `useChangePassword` | `hooks/useChangePassword.ts` | Mutacja zmiany hasła (PATCH `/api/auth/password`) |
+| `useExportData` | `hooks/useExportData.ts` | Mutacja eksportu danych RODO (GET `/api/auth/export`). Odbiera response blob i wyzwala pobranie pliku JSON w przeglądarce |
+| `useDeleteAccount` | `hooks/useDeleteAccount.ts` | Mutacja trwałego usunięcia konta (DELETE `/api/auth/me`) |
 | `useCategories` | `hooks/useCategories.ts` | Pobieranie kategorii scopowanych do aktywnego workspace'a |
 | `useTasks` | `hooks/useTasks.ts` | Pobieranie zadań (inbox lub scheduled) scopowanych do workspace'a |
 | `useEvents` | `hooks/useEvents.ts` | Pobieranie wydarzeń scopowanych do workspace'a |
@@ -461,6 +489,64 @@ Mechanizm delegowania zadań i wydarzeń konkretnemu członkowi zespołu. Stanow
 - Ikona `UserRound` z Lucide obok labela dropdownu
 
 **Integracja z cronem przypomnień**: Jeśli `task.assigneeId` lub (w przyszłości) `event.assigneeId` jest ustawione, powiadomienie push trafia do assignee, nie do twórcy — zob. sekcja 3.9.
+
+---
+
+### 3.12 Ustawienia profilu (Profile Settings)
+
+Zcentralizowany panel ustawień użytkownika dostępny z nagłówka aplikacji (ikonka avatara/Settings w `Layout`). Modal z zakładkami (tabs) zastępuje dotychczas rozrzucone kontrolki (toggle motywu, toggle push w nagłówku) i dodaje zarządzanie hasłem, awatar oraz funkcje RODO.
+
+#### 3.12.1 Komponent `ProfileSettingsModal`
+
+Plik: `components/profile/ProfileSettingsModal.tsx`
+
+- **Zakładki**: `profile` (User), `security` (Lock), `preferences` (SlidersHorizontal), `account` (ShieldAlert)
+- **Kontrolowana zakładka startowa**: prop `initialTab` (domyślnie `'profile'`)
+- **Lazy-mount tabpaneli**: renderowana jest tylko aktywna zakładka (`activeTab === id && <Component />`) — formularze nie zachowują stanu między przełączeniami, co zapobiega "wyciekom" wartości (np. wpisanego hasła)
+- **Accessibility**: `role="tablist"` / `role="tab"` / `role="tabpanel"`, `aria-selected`, `aria-controls`
+
+#### 3.12.2 Zakładka `ProfileTab`
+
+Plik: `components/profile/tabs/ProfileTab.tsx`
+
+- **Edycja nazwy**: react-hook-form + Zod (`updateProfileSchema` z shared). PATCH `/api/auth/me`
+- **Upload i crop avatara**: Natywny picker obrazu → modal croppingu po stronie klienta (react-easy-crop / canvas) → POST `/api/auth/avatar` (multipart). Po udanym uploadzie backend usuwa poprzedni plik avatara z dysku (`safeUnlink`) żeby nie zostawiać osieroconych plików
+- **Usunięcie avatara**: DELETE `/api/auth/avatar` — usuwa `avatarUrl` z User i plik z dysku
+- **Inwalidacja**: po zapisie refetch `useAuthStore.checkAuth` / odświeżenie `/api/auth/me`
+
+#### 3.12.3 Zakładka `SecurityTab`
+
+Plik: `components/profile/tabs/SecurityTab.tsx`
+
+- **Formularz zmiany hasła**: react-hook-form + `zodResolver(changePasswordSchema)` (shared)
+- **Pola**: `currentPassword`, `newPassword`, `confirmNewPassword` z przełączaną widocznością (Eye/EyeOff)
+- **Walidacja klienta**: `newPassword` ≥ 8 znaków, `confirmNewPassword === newPassword` (refinement)
+- **Walidacja serwera**: bieżące hasło musi się zgadzać, nowe musi różnić się od starego
+- **Reset formularza** przy przełączaniu zakładki (`isActive`) — zapobiega zachowaniu wpisanego hasła w stanie komponentu
+
+#### 3.12.4 Zakładka `PreferencesTab`
+
+Plik: `components/profile/tabs/PreferencesTab.tsx`
+
+- **Motyw**: grid trzech opcji (Jasny / Ciemny / Systemowy) z `ThemeContext.setTheme`
+- **Powiadomienia push**: integracja z hookiem `usePushNotifications`. Obsługa stanów `permission`: `unsupported` (banner), `denied` (banner z instrukcją odblokowania), inne (toggle subscribe/unsubscribe)
+- Zastępuje dawne przyciski-ikony w `Layout` nagłówka — nagłówek został uproszczony
+
+#### 3.12.5 Zakładka `AccountTab`
+
+Plik: `components/profile/tabs/AccountTab.tsx`
+
+Dzieli się na dwie sekcje:
+
+**Eksport danych (RODO)**:
+- Przycisk "Pobierz moje dane" → `useExportData` → GET `/api/auth/export`
+- Plik JSON (`mlm-export-<userId>-<date>.json`) pobierany przez `Content-Disposition: attachment`
+
+**Strefa niebezpieczna (usunięcie konta)**:
+- Przycisk "Usuń konto" otwiera `DeleteAccountConfirmModal` (sub-modal z wyższym z-index `70`)
+- **Mechanizm potwierdzenia**: użytkownik musi wpisać frazę `USUŃ` (case-insensitive, trim). Przycisk potwierdzenia aktywny tylko gdy fraza się zgadza i mutacja nie jest in-flight
+- Po sukcesie: `authStore.logout()`, `clearClientSession()`, twardy redirect `window.location.href = '/login'` — wymuszenie zrzutu wszystkich in-memory cache, listenerów i service workera
+- **Obsługa błędu "solo-owner"**: komunikat z backendu (lista zespołów, w których użytkownik jest jedynym OWNER z innymi członkami) jest wyświetlany w boxie alert w modalu
 
 ---
 
@@ -606,9 +692,12 @@ Mechanizm delegowania zadań i wydarzeń konkretnemu członkowi zespołu. Stanow
 - **`CalendarView`** — Komponent FullCalendar z widokami miesiąc/tydzień/dzień; scalanie zadań i wydarzeń; drag & drop; resize; modale tworzenia/edycji
 - **`TaskModal`** — Pełna edycja zadania: cykliczność, przypomnienia (ReminderPicker), załączniki (AttachmentPanel), priorytety, kategorie, przypisywanie do członka zespołu (dropdown widoczny w workspace zespołowym)
 - **`EventModal`** — Pełna edycja wydarzenia: lokalizacja, cykliczność, przypomnienia, załączniki, przypisywanie do członka zespołu (dropdown widoczny w workspace zespołowym; nowe wydarzenia domyślnie przypisywane do twórcy)
-- **`Layout`** — Nagłówek z SearchBar, toggle powiadomień push, przełącznik motywu, logout
+- **`Layout`** — Nagłówek z SearchBar, avatar użytkownika otwierający `ProfileSettingsModal` (ustawienia motywu i powiadomień push przeniesione z nagłówka do zakładki "Preferencje"), logout
 - **`SearchBar`** — Globalna cross-workspace wyszukiwarka z debounce, skrót Ctrl/Cmd+K, integracja z modalami, `WorkspaceBadge` przy każdym wyniku, automatyczne przełączenie aktywnego workspace'a przy kliknięciu wyniku z obcego zespołu
 - **`AssigneeAvatar`** — Awatar przypisanej osoby (obraz z fallbackiem na inicjał). Rozmiary xs/sm/md, używany w `TaskCard`, `CalendarView`, `TaskModal`, `EventModal`
+- **`ProfileSettingsModal`** — Zcentralizowany modal ustawień użytkownika z zakładkami `ProfileTab` (edycja nazwy + avatar z croppingiem), `SecurityTab` (zmiana hasła), `PreferencesTab` (motyw + powiadomienia push), `AccountTab` (RODO export + usunięcie konta z potwierdzeniem frazy "USUŃ")
+- **`TeamManagerModal`** — Zakładkowy panel zarządzania zespołem: `TeamMembersTab` (lista, zmiana roli, kick/leave), `TeamInvitesTab` (OWNER: generowanie kodów zaproszeń), `TeamSettingsTab` (OWNER: edycja nazwy + usunięcie zespołu)
+- **`ConfirmDialog`** — Generyczny dialog potwierdzenia z wariantem `destructive`, używany w team management
 
 ### Zarządzanie stanem
 
@@ -628,7 +717,7 @@ Axios z `baseURL: '/api'`, automatyczny Bearer token, obsługa `FormData` (usuni
 | Moduł | Opis |
 |-------|------|
 | `types.ts` | Typy TypeScript: Team, TeamMember, TeamInvitation, TeamRole, InvitationStatus, User, Category, Task, Event, CalendarItem, ApiResponse, AuthResponse, PaginatedResponse, **SearchResultType, SearchResultItem, SearchResponse**. Modele Category, Task, Event rozszerzone o opcjonalne `teamId` i `team?`. Task/Event dodatkowo o `assigneeId?` i zagnieżdżony `assignee?: Pick<User, 'id' \| 'name' \| 'avatarUrl' \| 'email'>`. |
-| `validators.ts` | Schematy Zod: auth, kategorie, zadania, wydarzenia, zakres dat, query parametry, zespoły (createTeamSchema, inviteMembersSchema, joinTeamSchema), **search (searchQuerySchema, searchResultItemSchema, searchResponseSchema)**. Schematy CRUD rozszerzone o `teamId` i `assigneeId` (cuid, nullable, optional). Schematy query (getCategoriesQuerySchema, getTasksQuerySchema, getEventsQuerySchema) scopowane do workspace'a. |
+| `validators.ts` | Schematy Zod: auth (w tym `changePasswordSchema` z wymogiem minimum 8 znaków i refinementem `newPassword === confirmNewPassword`, `updateProfileSchema`), kategorie, zadania, wydarzenia, zakres dat, query parametry, zespoły (`createTeamSchema`, `updateTeamSchema` — 2–100 znaków po trim, `updateMemberRoleSchema` — enum OWNER/MEMBER, `inviteMembersSchema`, `joinTeamSchema`), **search (searchQuerySchema, searchResultItemSchema, searchResponseSchema)**. Schematy CRUD rozszerzone o `teamId` i `assigneeId` (cuid, nullable, optional). Schematy query (getCategoriesQuerySchema, getTasksQuerySchema, getEventsQuerySchema) scopowane do workspace'a. |
 | `constants.ts` | Stałe: priorytety (etykiety, kolory), domyślne kategorie (seed), etykiety cykliczności, nazwy widoków FullCalendar, domyślne sloty czasowe, limity uploadu, **etykiety workspace'ów (`PERSONAL_WORKSPACE_LABEL = 'Konto osobiste'`, `TEAM_WORKSPACE_FALLBACK_LABEL = 'Zespół'`)** |
 
 **Uwaga**: Schematy Zod w pakiecie shared są teraz importowane przez kontrolery backendowe, co zmniejsza duplikację walidacji między API a shared. Kontrolery rozszerzają shared schematy o dodatkowe pola specyficzne dla endpointu (np. `dateString` refinement).
@@ -667,16 +756,18 @@ Axios z `baseURL: '/api'`, automatyczny Bearer token, obsługa `FormData` (usuni
 
 1. **Mobile workspace**: Zadeklarowany w `package.json`, ale katalog `mobile/` nie istnieje — komendy `yarn mobile:*` nie zadziałają
 2. **Pending attachments**: Schema bazy obsługuje załączniki "oczekujące" z `expiresAt`, ale brak implementacji uploadu pending i crona czyszczącego wygasłe rekordy
-3. **PATCH /auth/me**: Endpoint istnieje w API, ale frontend go nie wykorzystuje — brak UI do edycji profilu
-4. **Wyszukiwarka — ograniczenia pól**: Przeszukuje tylko tytuł i opis — nie uwzględnia kategorii, lokalizacji ani załączników. (Scope workspace'ów został naprawiony: zwraca wyniki osobiste + ze wszystkich zespołów użytkownika, każdy wynik zawiera `teamId`/`teamName`)
-5. **Paginacja**: Typ `PaginatedResponse` istnieje w shared, ale żaden endpoint API nie implementuje paginacji
-6. **README**: Dokumentacja API w README jest niekompletna — brakuje wielu endpointów (attachments, search, notifications, health, PATCH /auth/me, teams)
-7. **Cykliczne zadania**: W przeciwieństwie do wydarzeń, zadania z `recurrenceRule` nie generują syntetycznych instancji — pole jest w modelu, ale logika rozwijania cykliczności nie jest w pełni zaimplementowana dla zadań
-8. **Workspace — brak wysyłania emaili z zaproszeniami**: Endpoint generuje kody zaproszeń, ale ich dostarczenie do zaproszonych osób jest manualne (kopiowanie kodów). Brak integracji z serwisem email
-9. **Workspace — brak zarządzania członkami**: Brak endpointów do usuwania członków z zespołu, zmiany ról (MEMBER → OWNER), ani opuszczania zespołu. Brak endpointu usuwania/edycji zespołu
-10. **Workspace — brak czyszczenia wygasłych zaproszeń**: Zaproszenia z przekroczonym `expiresAt` pozostają w DB (status PENDING). Brak crona czyszczącego
-11. **Assignee — brak powiadamiania całego zespołu**: Cron przypomnień kieruje push do assignee (lub twórcy jako fallback). Nie ma opcji "powiadom wszystkich członków zespołu" dla zadań zespołowych bez przypisania — powiadamiany jest tylko twórca
-12. **Assignee — brak filtrów "moje przypisania"**: Backend ma indeksy `(assigneeId)` i `(teamId, assigneeId)`, ale API endpointów list (GET /tasks, GET /events) nie przyjmuje parametru `assigneeId`. Frontend również nie oferuje przełącznika "tylko moje zadania w tym zespole"
-13. **Assignee — brak historii zmian**: Reassign zadania nie jest logowany — brak audytu kto i kiedy zmienił przypisanie
-14. **Assignee dla wydarzeń — domyślne zachowanie**: `EventController.createEvent` domyślnie przypisuje nowe wydarzenia do twórcy (jeśli nie podano `assigneeId`). `TaskController.createTask` nie robi tego — tworzone zadanie jest bez assignee. Niespójne zachowanie może być mylące w UI
-15. **Wyszukiwarka i assignee**: SearchBar nie wyświetla informacji o przypisanym użytkowniku w wynikach, nie pozwala też filtrować po assignee
+3. **Wyszukiwarka — ograniczenia pól**: Przeszukuje tylko tytuł i opis — nie uwzględnia kategorii, lokalizacji ani załączników. (Scope workspace'ów został naprawiony: zwraca wyniki osobiste + ze wszystkich zespołów użytkownika, każdy wynik zawiera `teamId`/`teamName`)
+4. **Paginacja**: Typ `PaginatedResponse` istnieje w shared, ale żaden endpoint API nie implementuje paginacji
+5. **README**: Dokumentacja API w README jest niekompletna — brakuje wielu endpointów (attachments, search, notifications, health, profile settings: password/export/delete, teams: update/delete, member management)
+6. **Cykliczne zadania**: W przeciwieństwie do wydarzeń, zadania z `recurrenceRule` nie generują syntetycznych instancji — pole jest w modelu, ale logika rozwijania cykliczności nie jest w pełni zaimplementowana dla zadań
+7. **Workspace — brak wysyłania emaili z zaproszeniami**: Endpoint generuje kody zaproszeń, ale ich dostarczenie do zaproszonych osób jest manualne (kopiowanie kodów). Brak integracji z serwisem email
+8. **Assignee — brak powiadamiania całego zespołu**: Cron przypomnień kieruje push do assignee (lub twórcy jako fallback). Nie ma opcji "powiadom wszystkich członków zespołu" dla zadań zespołowych bez przypisania — powiadamiany jest tylko twórca
+9. **Assignee — brak filtrów "moje przypisania"**: Backend ma indeksy `(assigneeId)` i `(teamId, assigneeId)`, ale API endpointów list (GET /tasks, GET /events) nie przyjmuje parametru `assigneeId`. Frontend również nie oferuje przełącznika "tylko moje zadania w tym zespole"
+10. **Assignee — brak historii zmian**: Reassign zadania nie jest logowany — brak audytu kto i kiedy zmienił przypisanie
+11. **Assignee dla wydarzeń — domyślne zachowanie**: `EventController.createEvent` domyślnie przypisuje nowe wydarzenia do twórcy (jeśli nie podano `assigneeId`). `TaskController.createTask` nie robi tego — tworzone zadanie jest bez assignee. Niespójne zachowanie może być mylące w UI
+12. **Wyszukiwarka i assignee**: SearchBar nie wyświetla informacji o przypisanym użytkowniku w wynikach, nie pozwala też filtrować po assignee
+13. **Profile — brak MFA/2FA**: `SecurityTab` obsługuje tylko zmianę hasła. Brak dwuskładnikowej autentykacji, historii zalogowań, aktywnych sesji
+14. **Profile — eksport RODO tylko dla danych osobistych**: `GET /api/auth/export` zwraca wyłącznie `teamId = null` tasks/events/categories. Dane zespołowe (gdzie użytkownik jest członkiem) nie są eksportowane — może być niewystarczające dla pełnego żądania "wszystkich moich danych"
+15. **Profile — brak soft-delete konta / okresu recovery**: `DELETE /api/auth/me` natychmiast kasuje rekord z DB (cascade). Brak okresu karencji / możliwości przywrócenia konta przez użytkownika po pomyłkowym usunięciu
+16. **Teams — brak potwierdzenia/soft-delete przy usuwaniu zespołu**: `DELETE /api/teams/:id` natychmiast kasuje zespół cascade wraz ze wszystkimi zadaniami, wydarzeniami, kategoriami i zaproszeniami. Brak mechanizmu przywrócenia w razie pomyłki
+17. **Teams — brak powiadomienia usuniętych członków**: Po `removeMember` / `kick` usunięty użytkownik nie otrzymuje żadnego powiadomienia (email/push) o utracie dostępu do zespołu
