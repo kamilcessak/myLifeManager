@@ -16,6 +16,7 @@
    - [Przypomnienia (Cron)](#39-przypomnienia-cron)
    - [Upload obrazów (legacy)](#310-upload-obrazów-legacy)
    - [Zespoły i Obszary robocze (Workspaces)](#311-zespoły-i-obszary-robocze-workspaces)
+   - [Przypisywanie osób (Assignee / cowork)](#31110-przypisywanie-osób-assignee--cowork)
 4. [Model danych](#4-model-danych)
 5. [Frontend — widoki i komponenty](#5-frontend--widoki-i-komponenty)
 6. [Pakiet współdzielony (shared)](#6-pakiet-współdzielony-shared)
@@ -168,13 +169,16 @@ System organizacji zadań i wydarzeń w grupy tematyczne.
 
 ### 3.6 Wyszukiwarka
 
-Globalna wyszukiwarka z poziomu nagłówka aplikacji.
+Globalna, **cross-workspace** wyszukiwarka z poziomu nagłówka aplikacji — jednocześnie przeszukuje konto osobiste użytkownika oraz wszystkie zespoły, w których jest członkiem.
 
 | Endpoint | Metoda | Opis |
 |----------|--------|------|
-| `/api/search` | GET | Wyszukiwanie po parametrze `q`. Case-insensitive `contains` na tytule i opisie. Przeszukuje zadania (max 10) i wydarzenia (max 10), scala wyniki, sortuje po dacie, zwraca **top 10**. |
+| `/api/search` | GET | Wyszukiwanie po parametrze `q`. Case-insensitive `contains` na tytule i opisie. Filtr workspace: `(userId = me AND teamId IS NULL) OR teamId IN (moje zespoły)`. Zwraca zadania (max 10) i wydarzenia (max 10) z polami `teamId` i `teamName`, scala wyniki, sortuje po dacie, zwraca **top 10**. |
 
 **Cechy wyszukiwarki**:
+- **Cross-workspace**: Wyniki obejmują jednocześnie workspace osobisty i wszystkie zespoły użytkownika, niezależnie od aktywnego workspace'a — ułatwia szybkie wyszukanie elementu bez ręcznego przełączania kontekstu
+- **Workspace badge**: Każdy wynik oznaczony etykietą z ikoną (User dla osobistych, Building2 dla zespołów) i nazwą workspace'a. Elementy z obcego workspace'a (innego niż aktywny) mają dodatkowy akcent amber i obramowanie sygnalizujące zmianę kontekstu po kliknięciu
+- **Auto-switch kontekstu**: Kliknięcie wyniku z innego workspace'a automatycznie przełącza `activeWorkspaceId` w `useWorkspaceStore` (z toastem "Przełączono na: …") — dzięki temu modal edycji i wszystkie zależne hooki React Query dostają poprawny `teamId` w query keys
 - **Skrót klawiaturowy**: Ctrl/Cmd+K otwiera wyszukiwarkę
 - **Debounce**: Opóźnione zapytanie, by nie obciążać API przy każdym naciśnięciu klawisza
 - **Integracja z modalami**: Kliknięcie wyniku otwiera modal edycji zadania lub wydarzenia (ładuje pełne dane przez `getById`)
@@ -188,13 +192,15 @@ System plików powiązanych z zadaniami lub wydarzeniami.
 
 | Endpoint | Metoda | Opis |
 |----------|--------|------|
-| `/api/attachments/upload` | POST | Upload pliku (multipart `file`). Wymagany body: `taskId` **lub** `eventId`. Obsługiwane formaty: obrazy + PDF. Plik zapisywany w katalogu `uploads/`, tworzony rekord w bazie z URL. |
-| `/api/attachments/:id` | DELETE | Usunięcie załącznika. Weryfikacja przynależności przez zadanie/wydarzenie użytkownika. |
+| `/api/attachments/upload` | POST | Upload pliku (multipart `file`). Wymagany body: `taskId` **lub** `eventId`. Obsługiwane formaty: obrazy + PDF. Plik zapisywany w katalogu `uploads/`, tworzony rekord w bazie z URL. Autoryzacja workspace-aware: osobiste → `userId`, zespołowe → membership weryfikowany przez `verifyTeamAccess`. |
+| `/api/attachments/:id` | DELETE | Usunięcie załącznika. Weryfikacja przynależności przez zadanie/wydarzenie i workspace (osobisty = userId, zespołowy = membership). |
 
 **Cechy załączników**:
 - **Panel załączników**: Komponent `AttachmentPanel` w modalach zadań i wydarzeń
 - **Typy plików**: Obrazy (JPEG, PNG, GIF, WebP) i PDF
 - **Limity**: Zdefiniowane w shared/constants (rozmiar pliku i dozwolone typy MIME)
+- **Autoryzacja workspace-aware**: Helper `assertResourceAccess(resource, userId)` — dla zadania/wydarzenia z `teamId === null` wymaga zgodności `userId`, dla `teamId !== null` deleguje do `verifyTeamAccess`. Zapobiega cross-workspace dostępowi do załączników zespołowych
+- **Cleanup on failure**: Plik fizyczny jest usuwany (`safeUnlink`) z dysku jeśli walidacja / DB insert się nie powiodły — zapobiega zalewaniu uploadsów osieroconymi plikami
 - **Pending uploads**: Schema bazy danych obsługuje załączniki "oczekujące" (`userId` + `expiresAt`), ale **ta ścieżka nie jest w pełni zaimplementowana**
 
 ---
@@ -224,6 +230,8 @@ Automatyczny system przypomnień działający w tle.
 **Mechanizm**:
 - **Harmonogram**: `node-cron` uruchamiany co minutę (`'* * * * *'`)
 - **Logika**: Wyszukuje zadania i wydarzenia z ustawionym `reminderMinutes` i niezaznaczonym `reminderSent`. Oblicza czas przypomnienia (start/deadline minus minuty). Jeśli aktualny czas mieści się w ±30s od czasu przypomnienia, wysyła powiadomienie web-push
+- **Routing do przypisanego** (zadania i wydarzenia): Jeśli `assigneeId` jest ustawione, powiadomienie trafia do przypisanego użytkownika. Fallback na twórcę (`userId`) jeśli brak przypisania. Selekcja Prisma obejmuje `assigneeId` i `teamId` w zapytaniu
+- **Izolacja błędów**: Każde zadanie/wydarzenie przetwarzane w osobnym `try/catch` — błąd wysyłki dla jednego elementu nie przerywa przetwarzania pozostałych
 - **Oznaczanie**: Po wysłaniu ustawia `reminderSent: true`
 - **Czyszczenie**: Automatycznie usuwa martwe subskrypcje (status 410/404)
 - **Warunek**: Działa tylko gdy skonfigurowane są klucze VAPID
@@ -406,6 +414,54 @@ Nowy komponent `WorkspaceSwitcher` w nagłówku (`Layout`):
 - Task card padding: `p-3` → `px-3 py-2` (kompaktniejsze karty)
 - Priority 4 (pilne): poprawiony kontrast kolorów w dark mode (`#fecaca` zamiast `dark:text-red-300`)
 
+#### 3.11.10 Przypisywanie osób (Assignee / cowork)
+
+Mechanizm delegowania zadań i wydarzeń konkretnemu członkowi zespołu. Stanowi uzupełnienie workspace'ów — zadanie / wydarzenie należy do zespołu (`teamId`), ale może być dodatkowo przypisane do jednego konkretnego użytkownika (`assigneeId`).
+
+**Model danych**:
+
+| Model | Kolumna | Typ | Opis |
+|-------|---------|-----|------|
+| Task | assigneeId | String? | FK do User (SetNull przy usuwaniu użytkownika). NULL = nieprzypisane |
+| Event | assigneeId | String? | FK do User (SetNull przy usuwaniu użytkownika). NULL = nieprzypisane |
+
+**Nowe relacje Prisma**:
+- `User.tasks` (relacja "TaskOwner") + `User.assignedTasks` (relacja "TaskAssignee")
+- `User.events` (relacja "EventOwner") + `User.assignedEvents` (relacja "EventAssignee")
+- Nowe indeksy: `tasks(assigneeId)`, `tasks(teamId, assigneeId)`, `events(assigneeId)`, `events(teamId, assigneeId)` — przyspieszenie zapytań "moje przypisania w zespole X"
+
+**Migracje**:
+- `20260416164655_add_event_assignee/migration.sql`
+- `20260416170000_add_task_assignee/migration.sql`
+
+**Reguły walidacji (`resolveAssigneeId`)** — helper w `taskController` i `eventController`:
+1. `assigneeId === undefined` → pole nie zmieniane (UPDATE) lub nie ustawiane (CREATE)
+2. `assigneeId === null` → explicit unassign
+3. `teamId === null` (workspace osobisty): assignee **musi** być aktualnym użytkownikiem, inaczej `403` ("Personal tasks/events can only be assigned to yourself")
+4. `teamId !== null` (workspace zespołowy): weryfikacja istnienia rekordu `TeamMember(teamId, userId=assigneeId)`; brak członkostwa → `400` ("Assignee is not a member of this team")
+
+**Workspace change auto-nullification**: Przy UPDATE, jeśli `teamId` się zmienia i wywołujący nie podał `assigneeId`, istniejący `assigneeId` jest re-walidowany w kontekście **nowego** workspace'a. Jeśli dotychczasowy assignee nie należy do nowego zespołu — jest automatycznie ustawiany na `null` (zamiast błędu).
+
+**Domyślne wartości**:
+- `EventController.createEvent`: jeśli `assigneeId` nie został podany, domyślnie ustawiany jest **acting user** (twórca). Odzwierciedla intuicję "moje wydarzenie, chyba że inaczej zaznaczę"
+- `TaskController.createTask`: brak domyślnego assignee — zadanie bez przypisania pozostaje niezaprzypisane
+
+**Payload odpowiedzi**: Endpoints `GET/POST/PATCH /tasks/*` i `/events/*` dołączają zagnieżdżone pole `assignee: { id, name, avatarUrl, email } | null` (select przez relację) — pozwala wyświetlić avatar i dane bez dodatkowego zapytania o użytkownika.
+
+**Frontend — komponent `AssigneeAvatar`** (`components/AssigneeAvatar.tsx`):
+- Wyświetla avatar użytkownika (jeśli `avatarUrl`) z fallbackiem na inicjał (pierwsza litera imienia lub emaila) na niebieskim tle
+- Trzy rozmiary: `xs` (5×5), `sm` (6×6), `md` (8×8)
+- Obsługa błędu ładowania obrazu (`onError` → fallback do inicjału)
+- Tooltip "Assigned to: {name|email}" (wyłączany przez `showTitle={false}`)
+
+**Integracja w komponentach**:
+- **TaskCard**: Mały avatar w prawym górnym rogu karty obok tytułu
+- **CalendarView**: Avatar `size="xs"` po prawej stronie w `renderEventContent` (zarówno dla task jak i event)
+- **TaskModal / EventModal**: Dropdown "Przypisany do" — widoczny **tylko** gdy `activeWorkspaceId !== null` (czyli w workspace zespołowym). Lista członków pobierana z `useTeamMembers(activeWorkspaceId)`. Dostępne opcje: "Nieprzypisane" (null) + każdy członek zespołu z avatarem, nazwą i emailem. Dropdown zablokowany w trybie `view`
+- Ikona `UserRound` z Lucide obok labela dropdownu
+
+**Integracja z cronem przypomnień**: Jeśli `task.assigneeId` lub (w przyszłości) `event.assigneeId` jest ustawione, powiadomienie push trafia do assignee, nie do twórcy — zob. sekcja 3.9.
+
 ---
 
 ## 4. Model danych
@@ -480,10 +536,12 @@ Nowy komponent `WorkspaceSwitcher` w nagłówku (`Layout`):
 | imageUrl | String? | URL obrazu (legacy) |
 | reminderMinutes | Int? | Minuty przed przypomnieniem |
 | reminderSent | Boolean | Czy przypomnienie wysłane |
-| userId | String | FK do User |
+| userId | String | FK do User (twórca, relacja "TaskOwner") |
+| assigneeId | String? | FK do User (przypisany, relacja "TaskAssignee", SetNull) |
 | teamId | String? | FK do Team (null = zadanie osobiste) |
 | categoryId | String? | FK do Category |
 | @@index | (userId, teamId) | Indeks workspace-scoped |
+| @@index | (assigneeId), (teamId, assigneeId) | Indeksy dla zapytań "moje przypisania" |
 
 ### Event
 | Pole | Typ | Opis |
@@ -498,10 +556,12 @@ Nowy komponent `WorkspaceSwitcher` w nagłówku (`Layout`):
 | recurrenceRule | String? | Reguła RRULE |
 | reminderMinutes | Int? | Minuty przed przypomnieniem |
 | reminderSent | Boolean | Czy przypomnienie wysłane |
-| userId | String | FK do User |
+| userId | String | FK do User (twórca, relacja "EventOwner") |
+| assigneeId | String? | FK do User (przypisany, relacja "EventAssignee", SetNull) |
 | teamId | String? | FK do Team (null = wydarzenie osobiste) |
 | categoryId | String? | FK do Category |
 | @@index | (userId, teamId) | Indeks workspace-scoped |
+| @@index | (assigneeId), (teamId, assigneeId) | Indeksy dla zapytań "moje przypisania" |
 
 ### Attachment
 | Pole | Typ | Opis |
@@ -544,10 +604,11 @@ Nowy komponent `WorkspaceSwitcher` w nagłówku (`Layout`):
 - **`Dashboard`** — Kontener główny, zarządza stanem filtra kategorii współdzielonym między inbox a kalendarzem
 - **`TaskInbox`** — Skrzynka odbiorcza z sekcjami: dzisiaj, zaległe, jutro, później; zakładki kategorii; CRUD zadań; modal managera kategorii; tworzenie wydarzeń z menu kontekstowego
 - **`CalendarView`** — Komponent FullCalendar z widokami miesiąc/tydzień/dzień; scalanie zadań i wydarzeń; drag & drop; resize; modale tworzenia/edycji
-- **`TaskModal`** — Pełna edycja zadania: cykliczność, przypomnienia (ReminderPicker), załączniki (AttachmentPanel), priorytety, kategorie
-- **`EventModal`** — Pełna edycja wydarzenia: lokalizacja, cykliczność, przypomnienia, załączniki
+- **`TaskModal`** — Pełna edycja zadania: cykliczność, przypomnienia (ReminderPicker), załączniki (AttachmentPanel), priorytety, kategorie, przypisywanie do członka zespołu (dropdown widoczny w workspace zespołowym)
+- **`EventModal`** — Pełna edycja wydarzenia: lokalizacja, cykliczność, przypomnienia, załączniki, przypisywanie do członka zespołu (dropdown widoczny w workspace zespołowym; nowe wydarzenia domyślnie przypisywane do twórcy)
 - **`Layout`** — Nagłówek z SearchBar, toggle powiadomień push, przełącznik motywu, logout
-- **`SearchBar`** — Globalna wyszukiwarka z debounce, skrót Ctrl/Cmd+K, integracja z modalami
+- **`SearchBar`** — Globalna cross-workspace wyszukiwarka z debounce, skrót Ctrl/Cmd+K, integracja z modalami, `WorkspaceBadge` przy każdym wyniku, automatyczne przełączenie aktywnego workspace'a przy kliknięciu wyniku z obcego zespołu
+- **`AssigneeAvatar`** — Awatar przypisanej osoby (obraz z fallbackiem na inicjał). Rozmiary xs/sm/md, używany w `TaskCard`, `CalendarView`, `TaskModal`, `EventModal`
 
 ### Zarządzanie stanem
 
@@ -566,9 +627,9 @@ Axios z `baseURL: '/api'`, automatyczny Bearer token, obsługa `FormData` (usuni
 
 | Moduł | Opis |
 |-------|------|
-| `types.ts` | Typy TypeScript: Team, TeamMember, TeamInvitation, TeamRole, InvitationStatus, User, Category, Task, Event, CalendarItem, ApiResponse, AuthResponse, PaginatedResponse. Modele Category, Task, Event rozszerzone o opcjonalne `teamId` i `team?`. |
-| `validators.ts` | Schematy Zod: auth, kategorie, zadania, wydarzenia, zakres dat, query parametry, zespoły (createTeamSchema, inviteMembersSchema, joinTeamSchema). Schematy CRUD rozszerzone o `teamId`. Schematy query (getCategoriesQuerySchema, getTasksQuerySchema, getEventsQuerySchema) scopowane do workspace'a. |
-| `constants.ts` | Stałe: priorytety (etykiety, kolory), domyślne kategorie (seed), etykiety cykliczności, nazwy widoków FullCalendar, domyślne sloty czasowe, limity uploadu |
+| `types.ts` | Typy TypeScript: Team, TeamMember, TeamInvitation, TeamRole, InvitationStatus, User, Category, Task, Event, CalendarItem, ApiResponse, AuthResponse, PaginatedResponse, **SearchResultType, SearchResultItem, SearchResponse**. Modele Category, Task, Event rozszerzone o opcjonalne `teamId` i `team?`. Task/Event dodatkowo o `assigneeId?` i zagnieżdżony `assignee?: Pick<User, 'id' \| 'name' \| 'avatarUrl' \| 'email'>`. |
+| `validators.ts` | Schematy Zod: auth, kategorie, zadania, wydarzenia, zakres dat, query parametry, zespoły (createTeamSchema, inviteMembersSchema, joinTeamSchema), **search (searchQuerySchema, searchResultItemSchema, searchResponseSchema)**. Schematy CRUD rozszerzone o `teamId` i `assigneeId` (cuid, nullable, optional). Schematy query (getCategoriesQuerySchema, getTasksQuerySchema, getEventsQuerySchema) scopowane do workspace'a. |
+| `constants.ts` | Stałe: priorytety (etykiety, kolory), domyślne kategorie (seed), etykiety cykliczności, nazwy widoków FullCalendar, domyślne sloty czasowe, limity uploadu, **etykiety workspace'ów (`PERSONAL_WORKSPACE_LABEL = 'Konto osobiste'`, `TEAM_WORKSPACE_FALLBACK_LABEL = 'Zespół'`)** |
 
 **Uwaga**: Schematy Zod w pakiecie shared są teraz importowane przez kontrolery backendowe, co zmniejsza duplikację walidacji między API a shared. Kontrolery rozszerzają shared schematy o dodatkowe pola specyficzne dla endpointu (np. `dateString` refinement).
 
@@ -607,13 +668,15 @@ Axios z `baseURL: '/api'`, automatyczny Bearer token, obsługa `FormData` (usuni
 1. **Mobile workspace**: Zadeklarowany w `package.json`, ale katalog `mobile/` nie istnieje — komendy `yarn mobile:*` nie zadziałają
 2. **Pending attachments**: Schema bazy obsługuje załączniki "oczekujące" z `expiresAt`, ale brak implementacji uploadu pending i crona czyszczącego wygasłe rekordy
 3. **PATCH /auth/me**: Endpoint istnieje w API, ale frontend go nie wykorzystuje — brak UI do edycji profilu
-4. **Wyszukiwarka**: Przeszukuje tylko tytuł i opis — nie uwzględnia kategorii, lokalizacji ani załączników. **Nie jest scopowana do workspace'a** — wyszukuje po `userId` bez uwzględnienia `teamId`
+4. **Wyszukiwarka — ograniczenia pól**: Przeszukuje tylko tytuł i opis — nie uwzględnia kategorii, lokalizacji ani załączników. (Scope workspace'ów został naprawiony: zwraca wyniki osobiste + ze wszystkich zespołów użytkownika, każdy wynik zawiera `teamId`/`teamName`)
 5. **Paginacja**: Typ `PaginatedResponse` istnieje w shared, ale żaden endpoint API nie implementuje paginacji
 6. **README**: Dokumentacja API w README jest niekompletna — brakuje wielu endpointów (attachments, search, notifications, health, PATCH /auth/me, teams)
 7. **Cykliczne zadania**: W przeciwieństwie do wydarzeń, zadania z `recurrenceRule` nie generują syntetycznych instancji — pole jest w modelu, ale logika rozwijania cykliczności nie jest w pełni zaimplementowana dla zadań
 8. **Workspace — brak wysyłania emaili z zaproszeniami**: Endpoint generuje kody zaproszeń, ale ich dostarczenie do zaproszonych osób jest manualne (kopiowanie kodów). Brak integracji z serwisem email
 9. **Workspace — brak zarządzania członkami**: Brak endpointów do usuwania członków z zespołu, zmiany ról (MEMBER → OWNER), ani opuszczania zespołu. Brak endpointu usuwania/edycji zespołu
 10. **Workspace — brak czyszczenia wygasłych zaproszeń**: Zaproszenia z przekroczonym `expiresAt` pozostają w DB (status PENDING). Brak crona czyszczącego
-11. **Workspace — przypomnienia cron**: System przypomnień (`cron/reminders.ts`) nie został zaktualizowany o świadomość workspace'ów — wysyła powiadomienia do `userId` właściciela zadania/wydarzenia, co jest poprawne dla zadań osobistych, ale dla zadań zespołowych powinien powiadamiać wszystkich członków zespołu (lub przypisanego)
-12. **Workspace — brak przypisywania zadań do użytkowników**: W kontekście zespołowym zadania mają `userId` twórcy, ale brak pola `assigneeId` — nie można przypisać zadania innemu członkowi zespołu
-13. **Workspace — załączniki**: System załączników nie weryfikuje dostępu przez membership zespołowy — operuje na `userId` z zadania/wydarzenia, co może powodować problemy z autoryzacją w kontekście zespołowym
+11. **Assignee — brak powiadamiania całego zespołu**: Cron przypomnień kieruje push do assignee (lub twórcy jako fallback). Nie ma opcji "powiadom wszystkich członków zespołu" dla zadań zespołowych bez przypisania — powiadamiany jest tylko twórca
+12. **Assignee — brak filtrów "moje przypisania"**: Backend ma indeksy `(assigneeId)` i `(teamId, assigneeId)`, ale API endpointów list (GET /tasks, GET /events) nie przyjmuje parametru `assigneeId`. Frontend również nie oferuje przełącznika "tylko moje zadania w tym zespole"
+13. **Assignee — brak historii zmian**: Reassign zadania nie jest logowany — brak audytu kto i kiedy zmienił przypisanie
+14. **Assignee dla wydarzeń — domyślne zachowanie**: `EventController.createEvent` domyślnie przypisuje nowe wydarzenia do twórcy (jeśli nie podano `assigneeId`). `TaskController.createTask` nie robi tego — tworzone zadanie jest bez assignee. Niespójne zachowanie może być mylące w UI
+15. **Wyszukiwarka i assignee**: SearchBar nie wyświetla informacji o przypisanym użytkowniku w wynikach, nie pozwala też filtrować po assignee
