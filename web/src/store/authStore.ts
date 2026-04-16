@@ -20,9 +20,10 @@ interface AuthState {
   register: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => void;
   checkAuth: () => Promise<void>;
+  updateUser: (patch: Partial<User>) => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   token: localStorage.getItem('token'),
   isAuthenticated: false,
@@ -52,6 +53,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ user: null, token: null, isAuthenticated: false });
   },
   
+  updateUser: (patch) => {
+    const current = get().user;
+    if (!current) return;
+    set({ user: { ...current, ...patch } });
+  },
+
   checkAuth: async () => {
     const token = localStorage.getItem('token');
     

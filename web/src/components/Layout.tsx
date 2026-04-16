@@ -1,10 +1,11 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
-import { Bell, BellOff, BellRing, Calendar, Check, ChevronDown, LogOut, Monitor, Moon, User, Sun } from 'lucide-react';
+import { Bell, BellOff, BellRing, Calendar, Check, ChevronDown, LogOut, Monitor, Moon, Settings, User, Sun } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { ThemeMode, useTheme } from '../context/ThemeContext';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import SearchBar from './SearchBar';
 import WorkspaceSwitcher from './layout/WorkspaceSwitcher';
+import ProfileSettingsModal from './profile/ProfileSettingsModal';
 
 interface LayoutProps {
   children: ReactNode;
@@ -15,6 +16,7 @@ export default function Layout({ children }: LayoutProps) {
   const { theme, setTheme } = useTheme();
   const { permission, isSubscribed, subscribe, unsubscribe } = usePushNotifications();
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -89,12 +91,22 @@ export default function Layout({ children }: LayoutProps) {
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setIsAccountMenuOpen((prev) => !prev)}
-              className="flex items-center gap-2 px-3 py-2 text-sm app-text-muted hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)] rounded-lg transition-colors"
+              className="flex items-center gap-2 px-2 py-1.5 text-sm app-text-muted hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)] rounded-lg transition-colors"
               aria-haspopup="menu"
               aria-expanded={isAccountMenuOpen}
             >
-              <User className="w-4 h-4" />
-              <span>{user?.name || user?.email}</span>
+              {user?.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt="Avatar"
+                  className="w-7 h-7 rounded-full object-cover border border-[var(--app-border)]"
+                />
+              ) : (
+                <span className="flex w-7 h-7 items-center justify-center rounded-full bg-[var(--app-surface-muted)] text-[var(--app-text-muted)]">
+                  <User className="w-4 h-4" />
+                </span>
+              )}
+              <span className="hidden sm:inline max-w-[10rem] truncate">{user?.name || user?.email}</span>
               <ChevronDown className="w-4 h-4" />
             </button>
 
@@ -173,6 +185,17 @@ export default function Layout({ children }: LayoutProps) {
                 <div className="my-2 h-px bg-[var(--app-border)]" />
 
                 <button
+                  onClick={() => {
+                    setIsAccountMenuOpen(false);
+                    setIsProfileModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-2 rounded-md px-2 py-2 text-sm app-text hover:bg-[var(--app-surface-muted)]"
+                >
+                  <Settings className="w-4 h-4" />
+                  <span>Ustawienia profilu</span>
+                </button>
+
+                <button
                   onClick={logout}
                   className="w-full flex items-center gap-2 rounded-md px-2 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
                 >
@@ -187,6 +210,11 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* Main content */}
       <main>{children}</main>
+
+      <ProfileSettingsModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+      />
     </div>
   );
 }

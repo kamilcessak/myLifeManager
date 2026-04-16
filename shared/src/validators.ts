@@ -12,6 +12,20 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Hasło jest wymagane'),
 });
 
+export const updateProfileSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, 'Imię musi mieć co najmniej 2 znaki')
+    .optional()
+    .or(z.literal('')),
+  avatarUrl: z
+    .string()
+    .url('Nieprawidłowy adres URL')
+    .optional()
+    .or(z.literal('')),
+});
+
 // ==================== CATEGORY ====================
 export const createCategorySchema = z.object({
   name: z.string().min(1, 'Nazwa jest wymagana').max(50, 'Nazwa może mieć max 50 znaków'),
@@ -123,6 +137,7 @@ export const searchQuerySchema = z.object({
 // Type exports
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;

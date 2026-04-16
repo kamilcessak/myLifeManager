@@ -61,6 +61,19 @@ export const authApi = {
   login: (data: { email: string; password: string }) =>
     api.post("/auth/login", data),
   me: () => api.get("/auth/me"),
+  updateProfile: (data: { name?: string; avatarUrl?: string }) =>
+    api.patch<{
+      status: string;
+      data: {
+        user: {
+          id: string;
+          email: string;
+          name: string | null;
+          avatarUrl: string | null;
+          createdAt: string;
+        };
+      };
+    }>("/auth/me", data),
 };
 
 // Teams
@@ -222,7 +235,15 @@ export const uploadApi = {
   upload: (file: File) => {
     const formData = new FormData();
     formData.append("image", file);
-    return api.post("/upload", formData, {
+    return api.post<{
+      status: string;
+      data: {
+        imageUrl?: string;
+        url?: string;
+        filename?: string;
+        size?: number;
+      };
+    }>("/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
   },
