@@ -178,6 +178,7 @@ export const eventsApi = {
     isAllDay?: boolean;
     recurrenceRule?: string;
     reminderMinutes?: number | null;
+    assigneeId?: string | null;
   }) => api.post("/events", data),
 
   update: (
@@ -193,6 +194,7 @@ export const eventsApi = {
       recurrenceRule: string;
       reminderMinutes: number | null;
       teamId: string;
+      assigneeId: string | null;
     }>,
   ) => api.patch(`/events/${id}`, data),
 

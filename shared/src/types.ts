@@ -100,6 +100,8 @@ export interface Event {
   categoryId: string | null;
   category?: Category | null;
   team?: Team;
+  assigneeId?: string | null;
+  assignee?: Pick<User, 'id' | 'name' | 'avatarUrl' | 'email'> | null;
   createdAt: Date | string;
   updatedAt: Date | string;
   // For recurring event instances

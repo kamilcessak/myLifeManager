@@ -1,15 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeToClose } from '../hooks/useEscapeToClose';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, MapPin, Calendar, Repeat, Trash2, Edit2, ChevronDown } from 'lucide-react';
+import { X, MapPin, Calendar, Repeat, Trash2, Edit2, ChevronDown, UserRound } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { Event, Attachment } from '../types';
+import type { Event, Attachment, TaskAssignee } from '../types';
 import axios from 'axios';
 import { eventsApi, attachmentsApi } from '../lib/api';
 import { useCategories } from '../hooks/useCategories';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
+import { useAuthStore } from '../store/authStore';
+import { useTeamMembers } from '../hooks/useTeams';
 import AttachmentPanel from './AttachmentPanel';
+import AssigneeAvatar from './AssigneeAvatar';
 import ReminderPicker from './ReminderPicker';
+import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
 import { format, startOfDay, endOfDay, set as setDateParts } from 'date-fns';
 import { pl } from 'date-fns/locale';
@@ -40,6 +44,11 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
 
   const { data: categoriesData } = useCategories();
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const { data: teamMembersData } = useTeamMembers(activeWorkspaceId);
+  const teamMembers = teamMembersData ?? [];
+  const currentUser = useAuthStore((s) => s.user);
+  const [isAssigneeDropdownOpen, setIsAssigneeDropdownOpen] = useState(false);
 
   const categories = categoriesData || [];
 
@@ -56,7 +65,18 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
 
   const eventParentId = event ? event.originalEventId || event.id : null;
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    title: string;
+    description: string;
+    location: string;
+    categoryId: string;
+    startTime: string;
+    endTime: string;
+    isAllDay: boolean;
+    recurrenceRule: string;
+    reminderMinutes: number | null;
+    assigneeId: string | null;
+  }>({
     title: event?.title || '',
     description: event?.description || '',
     location: event?.location || '',
@@ -74,9 +94,34 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
     isAllDay: event?.isAllDay ?? initialDateRange?.allDay ?? false,
     recurrenceRule: event?.recurrenceRule || '',
     reminderMinutes: event?.reminderMinutes ?? null,
+    // Default new events to the current user as assignee.
+    assigneeId: event
+      ? event.assigneeId ?? event.assignee?.id ?? null
+      : currentUser?.id ?? null,
   });
 
   const selectedCategory = categories.find((category) => category.id === formData.categoryId);
+
+  const selectedTeamMember = formData.assigneeId
+    ? teamMembers.find((m) => m.user.id === formData.assigneeId)
+    : undefined;
+  const selectedAssignee: TaskAssignee | null = selectedTeamMember
+    ? {
+        id: selectedTeamMember.user.id,
+        name: selectedTeamMember.user.name,
+        email: selectedTeamMember.user.email,
+        avatarUrl: selectedTeamMember.user.avatarUrl,
+      }
+    : event?.assignee && event.assignee.id === formData.assigneeId
+      ? event.assignee
+      : currentUser && currentUser.id === formData.assigneeId
+        ? {
+            id: currentUser.id,
+            name: currentUser.name,
+            email: currentUser.email,
+            avatarUrl: currentUser.avatarUrl,
+          }
+        : null;
 
   const applyStartDate = useCallback(
     (d: Date | undefined) => {
@@ -226,7 +271,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
         description: data.description,
         location: data.location,
         categoryId: data.categoryId || undefined,
-        ...(teamId ? { teamId } : {}),
+        ...(teamId ? { teamId, assigneeId: data.assigneeId ?? null } : {}),
         startTime: new Date(data.startTime).toISOString(),
         endTime: new Date(data.endTime).toISOString(),
         isAllDay: data.isAllDay,
@@ -296,6 +341,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
         isAllDay: data.isAllDay,
         recurrenceRule: data.recurrenceRule || undefined,
         reminderMinutes: data.reminderMinutes,
+        ...(activeWorkspaceId ? { assigneeId: data.assigneeId ?? null } : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
@@ -496,6 +542,103 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
               )}
             </div>
           </div>
+
+          {/* Assignee (only inside a workspace) */}
+          {activeWorkspaceId !== null && (
+            <div>
+              <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
+                <span className="flex items-center gap-2">
+                  <UserRound className="w-4 h-4 shrink-0" />
+                  Przypisany do
+                </span>
+              </label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => mode !== 'view' && setIsAssigneeDropdownOpen((prev) => !prev)}
+                  className="task-modal-category-trigger flex w-full items-center justify-between rounded-lg border px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:hover:border-gray-500"
+                  disabled={mode === 'view'}
+                >
+                  <span className="flex items-center gap-2 text-sm min-w-0 dark:text-gray-100">
+                    {selectedAssignee ? (
+                      <>
+                        <AssigneeAvatar assignee={selectedAssignee} size="sm" showTitle={false} />
+                        <span className="truncate">
+                          {selectedAssignee.name || selectedAssignee.email}
+                        </span>
+                        {selectedAssignee.name && (
+                          <span className="truncate text-xs text-gray-500 dark:text-gray-400">
+                            {selectedAssignee.email}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-gray-500 dark:text-gray-400">Nieprzypisane</span>
+                    )}
+                  </span>
+                  <ChevronDown className="w-4 h-4 shrink-0" />
+                </button>
+                {isAssigneeDropdownOpen && mode !== 'view' && (
+                  <div className="task-modal-category-dropdown absolute z-20 mt-1 w-full border rounded-lg shadow-lg py-1 max-h-64 overflow-y-auto border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({ ...formData, assigneeId: null });
+                        setIsAssigneeDropdownOpen(false);
+                      }}
+                      className="task-modal-category-option w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+                    >
+                      <span className="w-6 h-6 rounded-full border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center text-[10px] text-gray-400">
+                        ∅
+                      </span>
+                      <span className="text-gray-700 dark:text-gray-200">Nieprzypisane</span>
+                    </button>
+                    {teamMembers.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                        Brak członków zespołu
+                      </div>
+                    ) : (
+                      teamMembers.map((member) => {
+                        const memberAssignee: TaskAssignee = {
+                          id: member.user.id,
+                          name: member.user.name,
+                          email: member.user.email,
+                          avatarUrl: member.user.avatarUrl,
+                        };
+                        const isSelected = formData.assigneeId === member.user.id;
+                        return (
+                          <button
+                            key={member.user.id}
+                            type="button"
+                            onClick={() => {
+                              setFormData({ ...formData, assigneeId: member.user.id });
+                              setIsAssigneeDropdownOpen(false);
+                            }}
+                            className={cn(
+                              'task-modal-category-option w-full px-3 py-2 text-left text-sm flex items-center gap-2',
+                              isSelected && 'bg-blue-50 dark:bg-blue-500/10',
+                            )}
+                          >
+                            <AssigneeAvatar assignee={memberAssignee} size="sm" showTitle={false} />
+                            <span className="flex min-w-0 flex-1 flex-col">
+                              <span className="truncate text-gray-900 dark:text-gray-100">
+                                {member.user.name || member.user.email}
+                              </span>
+                              {member.user.name && (
+                                <span className="truncate text-xs text-gray-500 dark:text-gray-400">
+                                  {member.user.email}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* All Day */}
           <div className="flex items-center gap-2">

@@ -397,6 +397,8 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
   const renderEventContent = useCallback((arg: EventContentArg) => {
     const isTask = arg.event.extendedProps.type === 'task';
     const taskData = isTask ? (arg.event.extendedProps.data as Task) : null;
+    const eventData = !isTask ? (arg.event.extendedProps.data as Event) : null;
+    const assignee = isTask ? taskData?.assignee ?? null : eventData?.assignee ?? null;
 
     const fullTitle = arg.event.title;
 
@@ -429,9 +431,9 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
             {arg.event.title}
           </span>
         </div>
-        {isTask && taskData?.assignee ? (
+        {assignee ? (
           <AssigneeAvatar
-            assignee={taskData.assignee}
+            assignee={assignee}
             size="xs"
             className="ml-auto shrink-0"
           />

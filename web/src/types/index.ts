@@ -80,6 +80,8 @@ export interface Event {
   originalEventId?: string;
   isRecurringInstance?: boolean;
   attachments?: Attachment[];
+  assigneeId?: string | null;
+  assignee?: TaskAssignee | null;
 }
 
 export interface CalendarItem {
