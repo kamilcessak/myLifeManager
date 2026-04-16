@@ -29,6 +29,13 @@ export interface Attachment {
   createdAt: string;
 }
 
+export interface TaskAssignee {
+  id: string;
+  name: string | null;
+  email: string;
+  avatarUrl: string | null;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -50,6 +57,8 @@ export interface Task {
   categoryId: string | null;
   category: Category | null;
   attachments?: Attachment[];
+  assigneeId?: string | null;
+  assignee?: TaskAssignee | null;
 }
 
 export interface Event {

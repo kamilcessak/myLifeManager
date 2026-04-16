@@ -24,6 +24,7 @@ import { patchTaskInTaskCaches, snapshotTaskCaches, restoreTaskCaches } from '..
 import EventModal from './EventModal';
 import TaskModal from './TaskModal';
 import SelectAddTypeModal, { CalendarSlotSelection } from './SelectAddTypeModal';
+import AssigneeAvatar from './AssigneeAvatar';
 import toast from 'react-hot-toast';
 import { CalendarCheck, CheckSquare } from 'lucide-react';
 
@@ -428,6 +429,13 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
             {arg.event.title}
           </span>
         </div>
+        {isTask && taskData?.assignee ? (
+          <AssigneeAvatar
+            assignee={taskData.assignee}
+            size="xs"
+            className="ml-auto shrink-0"
+          />
+        ) : null}
       </div>
     );
   }, [handleToggleComplete]);

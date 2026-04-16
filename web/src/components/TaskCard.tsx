@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Check, Clock, Calendar, Image, GripVertical } from 'lucide-react';
 import { Task } from '../types';
 import { cn, formatRelativeDate, getDeadlineColor, getPriorityBorderClass, getPriorityChipClass, getPriorityLabel, normalizePriority } from '../lib/utils';
+import AssigneeAvatar from './AssigneeAvatar';
 
 interface TaskCardProps {
   task: Task;
@@ -53,7 +54,16 @@ export default function TaskCard({ task, onToggleComplete, onEdit }: TaskCardPro
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <h3 className="task-title text-sm">{task.title}</h3>
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="task-title text-sm min-w-0 flex-1">{task.title}</h3>
+            {task.assignee && (
+              <AssigneeAvatar
+                assignee={task.assignee}
+                size="sm"
+                className="shrink-0 mt-0.5"
+              />
+            )}
+          </div>
 
           {/* Meta info */}
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">

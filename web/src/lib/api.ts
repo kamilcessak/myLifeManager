@@ -123,6 +123,7 @@ export const tasksApi = {
     recurrenceRule?: string;
     imageUrl?: string;
     reminderMinutes?: number | null;
+    assigneeId?: string | null;
   }) => api.post("/tasks", data),
 
   update: (
@@ -141,6 +142,7 @@ export const tasksApi = {
       isCompleted: boolean;
       reminderMinutes: number | null;
       teamId: string;
+      assigneeId: string | null;
     }>,
   ) => api.patch(`/tasks/${id}`, data),
 

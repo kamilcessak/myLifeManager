@@ -1,12 +1,14 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Clock, Flag, Trash2, CalendarCheck, ChevronDown, Edit2, CheckCircle2, Undo2 } from 'lucide-react';
-import { Task, Category, Attachment } from '../types';
+import { X, Clock, Flag, Trash2, CalendarCheck, ChevronDown, Edit2, CheckCircle2, Undo2, UserRound } from 'lucide-react';
+import { Task, Category, Attachment, TaskAssignee } from '../types';
 import { tasksApi, attachmentsApi } from '../lib/api';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
+import { useTeamMembers } from '../hooks/useTeams';
 import { patchTaskInTaskCaches, snapshotTaskCaches, restoreTaskCaches } from '../lib/workspaceTaskCache';
 import AttachmentPanel from './AttachmentPanel';
 import ReminderPicker from './ReminderPicker';
+import AssigneeAvatar from './AssigneeAvatar';
 import { cn, getPriorityChipClass, getPriorityLabel, normalizePriority } from '../lib/utils';
 import { useTheme } from '../context/ThemeContext';
 import { useEscapeToClose } from '../hooks/useEscapeToClose';
@@ -52,6 +54,7 @@ type TaskFormState = {
   scheduledStart: string;
   scheduledEnd: string;
   reminderMinutes: number | null;
+  assigneeId: string | null;
 };
 
 function getTaskFormInitial(task: Task | null, prefill: CalendarSlotSelection | null | undefined): TaskFormState {
@@ -76,6 +79,7 @@ function getTaskFormInitial(task: Task | null, prefill: CalendarSlotSelection | 
         ? format(new Date(task.scheduledEnd), "yyyy-MM-dd'T'HH:mm")
         : format(startOfHour(addHours(new Date(), 2)), "yyyy-MM-dd'T'HH:mm"),
       reminderMinutes: task.reminderMinutes ?? null,
+      assigneeId: task.assigneeId ?? task.assignee?.id ?? null,
     };
   }
   if (prefill) {
@@ -93,6 +97,7 @@ function getTaskFormInitial(task: Task | null, prefill: CalendarSlotSelection | 
         scheduledStart: format(d0, "yyyy-MM-dd'T'HH:mm"),
         scheduledEnd: format(endOfDay(prefill.start), "yyyy-MM-dd'T'HH:mm"),
         reminderMinutes: null,
+        assigneeId: null,
       };
     }
     return {
@@ -107,6 +112,7 @@ function getTaskFormInitial(task: Task | null, prefill: CalendarSlotSelection | 
       scheduledStart: format(prefill.start, "yyyy-MM-dd'T'HH:mm"),
       scheduledEnd: format(prefill.end, "yyyy-MM-dd'T'HH:mm"),
       reminderMinutes: null,
+      assigneeId: null,
     };
   }
   return {
@@ -121,6 +127,7 @@ function getTaskFormInitial(task: Task | null, prefill: CalendarSlotSelection | 
     scheduledStart: format(startOfHour(addHours(new Date(), 1)), "yyyy-MM-dd'T'HH:mm"),
     scheduledEnd: format(startOfHour(addHours(new Date(), 2)), "yyyy-MM-dd'T'HH:mm"),
     reminderMinutes: null,
+    assigneeId: null,
   };
 }
 
@@ -135,11 +142,15 @@ export default function TaskModal({
   useEscapeToClose(onClose);
   const { resolvedTheme } = useTheme();
   const queryClient = useQueryClient();
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const { data: teamMembersData } = useTeamMembers(activeWorkspaceId);
+  const teamMembers = teamMembersData ?? [];
   const isEditing = !!task;
   const calendarRowShowRef = useRef<HTMLLabelElement>(null);
   const calendarRowAllDayRef = useRef<HTMLLabelElement>(null);
   const [mode, setMode] = useState<'view' | 'edit'>(isEditing ? initialMode : 'edit');
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [isAssigneeDropdownOpen, setIsAssigneeDropdownOpen] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>(task?.attachments ?? []);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
@@ -159,6 +170,20 @@ export default function TaskModal({
   );
   const selectedCategory = categories.find((category) => category.id === formData.categoryId);
   const normalizedPriority = normalizePriority(formData.priority);
+
+  const selectedTeamMember = formData.assigneeId
+    ? teamMembers.find((m) => m.user.id === formData.assigneeId)
+    : undefined;
+  const selectedAssignee: TaskAssignee | null = selectedTeamMember
+    ? {
+        id: selectedTeamMember.user.id,
+        name: selectedTeamMember.user.name,
+        email: selectedTeamMember.user.email,
+        avatarUrl: selectedTeamMember.user.avatarUrl,
+      }
+    : task?.assignee && task.assignee.id === formData.assigneeId
+      ? task.assignee
+      : null;
 
   // Auto-enable calendar when deadline is set
   useEffect(() => {
@@ -210,6 +235,7 @@ export default function TaskModal({
 
       if (teamId) {
         payload.teamId = teamId;
+        payload.assigneeId = data.assigneeId ?? null;
       }
 
       if (data.showOnCalendar) {
@@ -287,6 +313,10 @@ export default function TaskModal({
         reminderMinutes: data.reminderMinutes,
       };
 
+      if (activeWorkspaceId) {
+        payload.assigneeId = data.assigneeId ?? null;
+      }
+
       // Handle calendar scheduling
       if (data.showOnCalendar) {
         if (data.scheduledAllDay && data.scheduledDate) {
@@ -308,13 +338,47 @@ export default function TaskModal({
 
       return tasksApi.update(task!.id, payload);
     },
+    onMutate: (data) => {
+      if (!task) return undefined;
+      const teamId = useWorkspaceStore.getState().activeWorkspaceId;
+      if (!teamId) return undefined;
+
+      const previous = snapshotTaskCaches(queryClient, teamId);
+      const nextAssigneeId = data.assigneeId ?? null;
+
+      // Build a mock assignee object so the avatar appears immediately.
+      let nextAssignee: TaskAssignee | null = null;
+      if (nextAssigneeId) {
+        const member = teamMembers.find((m) => m.user.id === nextAssigneeId);
+        if (member) {
+          nextAssignee = {
+            id: member.user.id,
+            name: member.user.name,
+            email: member.user.email,
+            avatarUrl: member.user.avatarUrl,
+          };
+        } else if (task.assignee && task.assignee.id === nextAssigneeId) {
+          nextAssignee = task.assignee;
+        }
+      }
+
+      patchTaskInTaskCaches(queryClient, teamId, task.id, {
+        assigneeId: nextAssigneeId,
+        assignee: nextAssignee,
+      });
+      onTaskUpdated?.({ id: task.id, assigneeId: nextAssigneeId, assignee: nextAssignee });
+      return { previous };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['events'] });
       toast.success('Zadanie zaktualizowane');
       onClose();
     },
-    onError: () => {
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previous) {
+        restoreTaskCaches(queryClient, ctx.previous);
+      }
       toast.error('Nie udało się zaktualizować zadania');
     },
   });
@@ -572,6 +636,103 @@ export default function TaskModal({
               )}
             </div>
           </div>
+
+          {/* Assignee (only inside a workspace) */}
+          {activeWorkspaceId !== null && (
+            <div>
+              <label className="task-modal-field-label block text-sm font-medium text-gray-900 mb-1 dark:text-gray-300">
+                <span className="flex items-center gap-2">
+                  <UserRound className="w-4 h-4" />
+                  Przypisany do
+                </span>
+              </label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => mode !== 'view' && setIsAssigneeDropdownOpen((prev) => !prev)}
+                  className="task-modal-category-trigger flex w-full items-center justify-between rounded-lg border px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:hover:border-gray-500"
+                  disabled={mode === 'view'}
+                >
+                  <span className="flex items-center gap-2 text-sm min-w-0 dark:text-gray-100">
+                    {selectedAssignee ? (
+                      <>
+                        <AssigneeAvatar assignee={selectedAssignee} size="sm" showTitle={false} />
+                        <span className="truncate">
+                          {selectedAssignee.name || selectedAssignee.email}
+                        </span>
+                        {selectedAssignee.name && (
+                          <span className="truncate text-xs text-gray-500 dark:text-gray-400">
+                            {selectedAssignee.email}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-gray-500 dark:text-gray-400">Nieprzypisane</span>
+                    )}
+                  </span>
+                  <ChevronDown className="w-4 h-4 shrink-0" />
+                </button>
+                {isAssigneeDropdownOpen && mode !== 'view' && (
+                  <div className="task-modal-category-dropdown absolute z-20 mt-1 w-full border rounded-lg shadow-lg py-1 max-h-64 overflow-y-auto border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({ ...formData, assigneeId: null });
+                        setIsAssigneeDropdownOpen(false);
+                      }}
+                      className="task-modal-category-option w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+                    >
+                      <span className="w-6 h-6 rounded-full border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center text-[10px] text-gray-400">
+                        ∅
+                      </span>
+                      <span className="text-gray-700 dark:text-gray-200">Nieprzypisane</span>
+                    </button>
+                    {teamMembers.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                        Brak członków zespołu
+                      </div>
+                    ) : (
+                      teamMembers.map((member) => {
+                        const memberAssignee: TaskAssignee = {
+                          id: member.user.id,
+                          name: member.user.name,
+                          email: member.user.email,
+                          avatarUrl: member.user.avatarUrl,
+                        };
+                        const isSelected = formData.assigneeId === member.user.id;
+                        return (
+                          <button
+                            key={member.user.id}
+                            type="button"
+                            onClick={() => {
+                              setFormData({ ...formData, assigneeId: member.user.id });
+                              setIsAssigneeDropdownOpen(false);
+                            }}
+                            className={cn(
+                              'task-modal-category-option w-full px-3 py-2 text-left text-sm flex items-center gap-2',
+                              isSelected && 'bg-blue-50 dark:bg-blue-500/10',
+                            )}
+                          >
+                            <AssigneeAvatar assignee={memberAssignee} size="sm" showTitle={false} />
+                            <span className="flex min-w-0 flex-1 flex-col">
+                              <span className="truncate text-gray-900 dark:text-gray-100">
+                                {member.user.name || member.user.email}
+                              </span>
+                              {member.user.name && (
+                                <span className="truncate text-xs text-gray-500 dark:text-gray-400">
+                                  {member.user.email}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Priority */}
           <div>
