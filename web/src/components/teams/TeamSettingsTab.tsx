@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, Save, Trash2, TriangleAlert } from 'lucide-react';
+import { AlertTriangle, Loader2, Save, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -120,7 +120,7 @@ export default function TeamSettingsTab({ team, isOwner, onDeleted }: TeamSettin
       <section className="rounded-lg border border-red-500/30 bg-red-500/5 p-4">
         <div className="flex items-start gap-3">
           <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-600 dark:text-red-400">
-            <TriangleAlert className="h-5 w-5" />
+            <AlertTriangle className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-semibold text-red-600 dark:text-red-400">Strefa niebezpieczna</h3>
