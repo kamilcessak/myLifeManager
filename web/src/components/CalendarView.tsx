@@ -36,6 +36,17 @@ interface CalendarViewProps {
 const CAL_COMPLETED_TASK_BG = '#16a34a';
 const CAL_PENDING_TASK_BG = '#3b82f6';
 
+/**
+ * Czy przedział [start, end) obejmuje więcej niż jeden dzień kalendarzowy.
+ * Wydarzenie kończące się dokładnie o północy następnego dnia (np. 09:00 – 00:00)
+ * traktujemy nadal jako jednodniowe, dlatego odejmujemy 1 ms od końca.
+ */
+const spansMultipleCalendarDays = (start: Date, end: Date): boolean => {
+  if (end.getTime() <= start.getTime()) return false;
+  const lastInstant = new Date(end.getTime() - 1);
+  return startOfDay(start).getTime() !== startOfDay(lastInstant).getTime();
+};
+
 export default function CalendarView({ activeCategory }: CalendarViewProps) {
   const MONTH_DAY_EVENT_LIMIT = 4;
   const calendarRef = useRef<FullCalendar>(null);
@@ -71,30 +82,37 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
         .map((task) => {
           const start = new Date(task.scheduledStart!);
           const end = new Date(task.scheduledEnd!);
+          const allDay = !!task.scheduledAllDay || spansMultipleCalendarDays(start, end);
 
           return {
             id: `task-${task.id}`,
             title: task.title,
             start,
             end,
-            allDay: !!task.scheduledAllDay,
+            allDay,
             type: 'task' as const,
             color: task.isCompleted ? CAL_COMPLETED_TASK_BG : CAL_PENDING_TASK_BG,
             data: task,
             classNames: ['fc-event-task', task.isCompleted ? 'fc-event-task-completed' : ''].filter(Boolean),
           };
         }),
-      ...events.map((event) => ({
-        id: event.isRecurringInstance ? event.id : `event-${event.id}`,
-        title: event.title,
-        start: new Date(event.startTime),
-        end: new Date(event.endTime),
-        allDay: event.isAllDay,
-        type: 'event' as const,
-        color: event.category?.color || '#3b82f6',
-        data: event,
-        classNames: ['fc-event-event'],
-      })),
+      ...events.map((event) => {
+        const start = new Date(event.startTime);
+        const end = new Date(event.endTime);
+        const allDay = event.isAllDay || spansMultipleCalendarDays(start, end);
+
+        return {
+          id: event.isRecurringInstance ? event.id : `event-${event.id}`,
+          title: event.title,
+          start,
+          end,
+          allDay,
+          type: 'event' as const,
+          color: event.category?.color || '#3b82f6',
+          data: event,
+          classNames: ['fc-event-event'],
+        };
+      }),
     ];
   }, [rangeTasks, rangeEvents]);
 
