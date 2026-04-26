@@ -133,12 +133,16 @@ export default function TimePicker({
         <SelectValue />
       </SelectTrigger>
       <SelectContent
-        className="z-[400] max-h-60 border-border p-1 shadow-md ring-1 ring-foreground/10 dark:ring-foreground/15"
+        className="time-picker-content z-[400] max-h-60 rounded-xl border border-slate-100 bg-white p-1.5 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1),0_8px_10px_-6px_rgba(0,0,0,0.1)] ring-0 dark:border-gray-700 dark:bg-gray-800"
         position="popper"
         sideOffset={6}
       >
         {options.map((o) => (
-          <SelectItem key={o.value} value={o.value} className="text-sm">
+          <SelectItem
+            key={o.value}
+            value={o.value}
+            className="rounded-lg py-2 pl-4 pr-10 text-sm transition-colors hover:bg-slate-50 focus:bg-slate-50 data-[state=checked]:bg-blue-50 data-[state=checked]:font-medium data-[state=checked]:text-blue-500 data-[state=checked]:[&_svg]:text-blue-500 dark:hover:bg-gray-700 dark:focus:bg-gray-700 dark:data-[state=checked]:bg-blue-500/15 dark:data-[state=checked]:text-blue-300 dark:data-[state=checked]:[&_svg]:text-blue-300"
+          >
             {o.label}
           </SelectItem>
         ))}

@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeToClose } from '../hooks/useEscapeToClose';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, MapPin, Calendar, Repeat, Trash2, Edit2, ChevronDown, UserRound } from 'lucide-react';
-import { Checkbox } from '@/components/ui/checkbox';
+import { X, Trash2, Edit2, ChevronDown } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import type { Event, Attachment, TaskAssignee } from '../types';
 import axios from 'axios';
 import { eventsApi, attachmentsApi } from '../lib/api';
@@ -25,6 +25,7 @@ interface EventModalProps {
   initialDateRange: { start: Date; end: Date; allDay: boolean } | null;
   onClose: () => void;
   initialMode?: 'view' | 'edit';
+  presentation?: 'modal' | 'panel';
 }
 
 const recurrenceOptions = [
@@ -36,7 +37,13 @@ const recurrenceOptions = [
   { value: 'FREQ=YEARLY;INTERVAL=1', label: 'Co rok' },
 ];
 
-export default function EventModal({ event, initialDateRange, onClose, initialMode = 'edit' }: EventModalProps) {
+export default function EventModal({
+  event,
+  initialDateRange,
+  onClose,
+  initialMode = 'edit',
+  presentation = 'modal',
+}: EventModalProps) {
   useEscapeToClose(onClose);
   const queryClient = useQueryClient();
   const isEditing = !!event;
@@ -396,36 +403,43 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
     !formData.isAllDay && eventSameCalendarDay && eventSlotAfterStart
       ? optionMinutes(eventSlotAfterStart)
       : undefined;
+  const isPanel = presentation === 'panel';
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal-content event-modal-content animate-fade-in"
+    <div className={isPanel ? 'task-detail-panel-shell' : 'modal-overlay'} onClick={isPanel ? undefined : onClose}>
+      <aside
+        className={cn(
+          isPanel
+            ? 'task-detail-panel animate-slide-in-right'
+            : 'modal-content task-modal-content animate-fade-in'
+        )}
         onClick={(e) => e.stopPropagation()}
+        aria-label={isEditing ? 'Szczegóły wydarzenia' : 'Nowe wydarzenie'}
       >
         <div className="event-modal-scroll">
         {/* Header */}
-        <div className="event-modal-header flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-transparent">
-          <h2 className="event-modal-title text-lg font-semibold text-gray-900 dark:text-gray-100">
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="task-modal-header-title text-lg font-semibold min-w-0 flex-1">
             {isEditing ? (mode === 'view' ? 'Podgląd wydarzenia' : 'Edytuj wydarzenie') : 'Nowe wydarzenie'}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="event-modal-close p-1.5 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="task-modal-close p-1.5 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
           >
-            <X className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form / View */}
         <form
           onSubmit={handleSubmit}
-          className="event-modal-form p-6 space-y-4 bg-white text-gray-900 dark:bg-transparent dark:text-gray-100"
+          className="bg-white p-6 text-gray-900 dark:bg-transparent dark:text-gray-100"
         >
+          <section className="task-form-section space-y-3">
           {/* Title */}
           <div>
-            <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
+            <label className="task-modal-field-label block text-sm font-medium text-gray-900 mb-1 dark:text-gray-300">
               Tytuł
             </label>
             <input
@@ -441,7 +455,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
 
           {/* Description */}
           <div>
-            <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
+            <label className="task-modal-field-label block text-sm font-medium text-gray-900 mb-1 dark:text-gray-300">
               Opis (opcjonalnie)
             </label>
             <textarea
@@ -454,23 +468,10 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
             />
           </div>
 
-          <AttachmentPanel
-            variant="event"
-            parentId={eventParentId}
-            attachments={attachments}
-            onAttachmentsChange={setAttachments}
-            pendingFiles={pendingFiles}
-            onPendingFilesChange={!event ? setPendingFiles : undefined}
-            readOnly={mode === 'view'}
-          />
-
           {/* Location */}
           <div>
-            <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
-              <span className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 shrink-0" />
-                Lokalizacja (opcjonalnie)
-              </span>
+            <label className="task-modal-field-label block text-sm font-medium text-gray-900 mb-1 dark:text-gray-300">
+              Lokalizacja (opcjonalnie)
             </label>
             <input
               type="text"
@@ -484,7 +485,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
 
           {/* Category */}
           <div>
-            <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
+            <label className="task-modal-field-label block text-sm font-medium text-gray-900 mb-1 dark:text-gray-300">
               Kategoria
             </label>
             <div className="relative">
@@ -546,11 +547,8 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
           {/* Assignee (only inside a workspace) */}
           {activeWorkspaceId !== null && (
             <div>
-              <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
-                <span className="flex items-center gap-2">
-                  <UserRound className="w-4 h-4 shrink-0" />
-                  Przypisany do
-                </span>
+              <label className="task-modal-field-label block text-sm font-medium text-gray-900 mb-1 dark:text-gray-300">
+                Przypisany do
               </label>
               <div className="relative">
                 <button
@@ -639,11 +637,21 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
               </div>
             </div>
           )}
+          </section>
 
-          {/* All Day */}
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="isAllDay"
+          <section className="task-form-section space-y-3">
+          {/* Date & Time */}
+          <div>
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <span className="task-modal-field-label text-sm font-medium text-gray-900 dark:text-gray-300">
+                Data i czas
+              </span>
+              <div className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 dark:bg-gray-800">
+            <Switch
+              id="eventIsAllDay"
+              type="button"
+              size="default"
+              className="border border-slate-300 data-[state=checked]:bg-blue-600 data-[state=unchecked]:bg-slate-300 dark:border-gray-600 dark:data-[state=checked]:bg-blue-500 dark:data-[state=unchecked]:bg-gray-600"
               checked={formData.isAllDay}
               onCheckedChange={(checked) => {
                 const isOn = checked === true;
@@ -675,23 +683,17 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
                 });
               }}
               disabled={mode === 'view'}
-              className="border border-gray-400 dark:border-gray-600"
             />
             <label
-              htmlFor="isAllDay"
-              className="event-modal-label cursor-pointer text-sm font-medium text-gray-800 dark:text-gray-300"
+              htmlFor="eventIsAllDay"
+              className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-200"
             >
-              Wydarzenie całodniowe
+              Cały dzień
             </label>
+              </div>
+            </div>
           </div>
-
-          {/* Date & Time */}
           <div className="space-y-3">
-            <div>
-              <span className="event-modal-label mb-2 flex items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-300">
-                <Calendar className="h-4 w-4 shrink-0" />
-                {formData.isAllDay ? 'Daty (cały dzień)' : 'Data i godzina'}
-              </span>
               {mode === 'view' ? (
                 <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
                   <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-8 sm:gap-y-2">
@@ -708,11 +710,11 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
                   </div>
                 </div>
               ) : formData.isAllDay ? (
-                <div className="flex flex-col gap-4 mt-3">
+                <div className="flex flex-col gap-3">
                   <div className="w-full">
                     <label
                       htmlFor="event-all-day-start"
-                      className="mb-1.5 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400"
+                      className="mb-1 block text-xs font-normal text-slate-500 dark:text-gray-400"
                     >
                       Początek
                     </label>
@@ -726,7 +728,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
                   <div className="w-full">
                     <label
                       htmlFor="event-all-day-end"
-                      className="mb-1.5 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400"
+                      className="mb-1 block text-xs font-normal text-slate-500 dark:text-gray-400"
                     >
                       Koniec
                     </label>
@@ -741,26 +743,26 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
                 </div>
               ) : (
                 <div
-                  className="flex flex-col gap-4 mt-3"
+                  className="flex flex-col gap-3"
                   role="group"
                   aria-label="Data i godzina: początek i koniec"
                 >
                   <div className="w-full">
                     <label
                       htmlFor="event-range-start-date"
-                      className="mb-1.5 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400"
+                      className="mb-1 block text-xs font-normal text-slate-500 dark:text-gray-400"
                     >
                       Początek
                     </label>
-                    <div className="flex w-full gap-2">
+                    <div className="flex w-full items-center gap-2">
                       <DatePicker
                         id="event-range-start-date"
-                        className="min-w-0 flex-1 text-left"
+                        className="h-10 min-w-0 flex-1 text-left"
                         value={startOfDay(eventStartForRange)}
                         onChange={applyStartDate}
                       />
                       <TimePicker
-                        className="w-[110px] shrink-0"
+                        className="h-10 w-[110px] shrink-0"
                         value={format(eventStartForRange, 'HH:mm')}
                         onChange={applyStartTime}
                       />
@@ -769,20 +771,20 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
                   <div className="w-full">
                     <label
                       htmlFor="event-range-end-date"
-                      className="mb-1.5 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400"
+                      className="mb-1 block text-xs font-normal text-slate-500 dark:text-gray-400"
                     >
                       Koniec
                     </label>
-                    <div className="flex w-full gap-2">
+                    <div className="flex w-full items-center gap-2">
                       <DatePicker
                         id="event-range-end-date"
-                        className="min-w-0 flex-1 text-left"
+                        className="h-10 min-w-0 flex-1 text-left"
                         value={startOfDay(eventEndForRange)}
                         onChange={applyEndDate}
                         disabledDays={{ before: startOfDay(eventStartForRange) }}
                       />
                       <TimePicker
-                        className="w-[110px] shrink-0"
+                        className="h-10 w-[110px] shrink-0"
                         value={format(eventEndForRange, 'HH:mm')}
                         onChange={applyEndTime}
                         minMinutes={eventEndTimeMinMinutes}
@@ -791,16 +793,12 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
                   </div>
                 </div>
               )}
-            </div>
           </div>
 
           {/* Recurrence */}
           <div>
-            <label className="event-modal-label block text-sm font-medium text-gray-800 mb-1 dark:text-gray-300">
-              <span className="flex items-center gap-2">
-                <Repeat className="w-4 h-4 shrink-0" />
-                Powtarzanie
-              </span>
+            <label className="task-modal-field-label block text-sm font-medium text-gray-900 mb-1 dark:text-gray-300">
+              Powtarzanie
             </label>
             <select
               value={formData.recurrenceRule}
@@ -822,17 +820,30 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
             onChange={(val) => setFormData({ ...formData, reminderMinutes: val })}
             disabled={mode === 'view'}
           />
+          </section>
+
+          <section className="task-form-section task-form-section-last space-y-4">
+            <AttachmentPanel
+              variant="event"
+              parentId={eventParentId}
+              attachments={attachments}
+              onAttachmentsChange={setAttachments}
+              pendingFiles={pendingFiles}
+              onPendingFilesChange={!event ? setPendingFiles : undefined}
+              readOnly={mode === 'view'}
+            />
+          </section>
         </form>
         </div>
 
         {/* Footer */}
-        <div className="event-modal-footer flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-white rounded-b-xl dark:border-gray-700 dark:bg-gray-800/60 shrink-0">
+        <div className="task-modal-footer sticky bottom-0 z-10 flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-white rounded-b-xl dark:border-gray-700 dark:bg-gray-800 shrink-0">
           {isEditing ? (
             <button
               type="button"
               onClick={() => deleteMutation.mutate()}
               disabled={deleteMutation.isPending}
-              className="event-modal-delete flex items-center gap-2 px-3 py-2 border border-red-200 bg-white text-red-700 hover:bg-red-50 rounded-lg transition-colors dark:border-red-500/30 dark:bg-transparent dark:text-red-400 dark:hover:bg-red-500/10"
+              className="flex items-center gap-2 px-3 py-2 border border-red-200 bg-white text-red-600 hover:bg-red-50 rounded-lg transition-colors dark:border-red-500/30 dark:bg-transparent dark:text-red-400 dark:hover:bg-red-500/10"
             >
               <Trash2 className="w-4 h-4" />
               Usuń
@@ -845,7 +856,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
             <button
               type="button"
               onClick={onClose}
-              className="event-modal-cancel px-4 py-2 border border-gray-300 bg-white text-gray-900 hover:bg-gray-100 rounded-lg transition-colors dark:border-gray-600 dark:bg-transparent dark:text-gray-200 dark:hover:bg-gray-700"
+              className="task-modal-cancel px-4 py-2 border border-gray-300 rounded-lg transition-colors dark:border-gray-600 dark:bg-transparent dark:hover:bg-gray-700"
             >
               Anuluj
             </button>
@@ -869,7 +880,7 @@ export default function EventModal({ event, initialDateRange, onClose, initialMo
             )}
           </div>
         </div>
-      </div>
+      </aside>
     </div>
   );
 }

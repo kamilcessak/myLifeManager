@@ -1,5 +1,3 @@
-import { Bell, BellOff } from 'lucide-react';
-
 interface ReminderPickerProps {
   value: number | null;
   onChange: (value: number | null) => void;
@@ -22,14 +20,7 @@ export default function ReminderPicker({ value, onChange, disabled }: ReminderPi
   return (
     <div>
       <label className="block text-sm font-medium text-gray-900 mb-1 dark:text-gray-300">
-        <span className="flex items-center gap-2">
-          {value != null ? (
-            <Bell className="w-4 h-4 text-blue-500" />
-          ) : (
-            <BellOff className="w-4 h-4" />
-          )}
-          Przypomnienie
-        </span>
+        Przypomnienie
       </label>
       <select
         value={value === null ? '__none__' : String(value)}

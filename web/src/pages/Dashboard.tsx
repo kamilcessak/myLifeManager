@@ -1,20 +1,13 @@
-import { useState } from 'react';
-import TaskInbox from '../components/TaskInbox';
 import CalendarView from '../components/CalendarView';
+import { useCategoryFilterStore } from '../store/useCategoryFilterStore';
 
 export default function Dashboard() {
-  const [activeCategory, setActiveCategory] = useState<string | 'all' | 'none'>('all');
+  const activeCategoryFilter = useCategoryFilterStore((s) => s.activeCategoryFilter);
 
   return (
     <div className="split-view">
-      {/* Left panel - Task Inbox */}
-      <div className="split-view-left">
-        <TaskInbox activeCategory={activeCategory} onCategoryChange={setActiveCategory} />
-      </div>
-
-      {/* Right panel - Calendar */}
-      <div className="split-view-right">
-        <CalendarView activeCategory={activeCategory} />
+      <div className="split-view-main">
+        <CalendarView activeCategory={activeCategoryFilter} />
       </div>
     </div>
   );

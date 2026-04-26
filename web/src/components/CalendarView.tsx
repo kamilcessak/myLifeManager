@@ -20,21 +20,22 @@ import { useCategories } from '../hooks/useCategories';
 import { useTasks } from '../hooks/useTasks';
 import { useEvents } from '../hooks/useEvents';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
+import { useCalendarUiStore } from '../store/useCalendarUiStore';
+import type { CategoryFilter } from '../store/useCategoryFilterStore';
 import { patchTaskInTaskCaches, snapshotTaskCaches, restoreTaskCaches } from '../lib/workspaceTaskCache';
 import EventModal from './EventModal';
-import TaskModal from './TaskModal';
+import TaskDetailPanel from './TaskDetailPanel';
 import SelectAddTypeModal, { CalendarSlotSelection } from './SelectAddTypeModal';
 import AssigneeAvatar from './AssigneeAvatar';
 import toast from 'react-hot-toast';
 import { CalendarCheck, CheckSquare } from 'lucide-react';
+import { getPriorityCalendarColor } from '../lib/utils';
 
 interface CalendarViewProps {
-  activeCategory: string | 'all' | 'none';
+  activeCategory: CategoryFilter;
 }
 
-/** Zielony tylko dla ukończonych; oczekujące — brand (niezależnie od kategorii). */
-const CAL_COMPLETED_TASK_BG = '#16a34a';
-const CAL_PENDING_TASK_BG = '#3b82f6';
+const NEW_TASK_PANEL_ID = '__new_task__';
 
 /**
  * Czy przedział [start, end) obejmuje więcej niż jeden dzień kalendarzowy.
@@ -53,15 +54,18 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
   const draggableRef = useRef<Draggable | null>(null);
   const pendingExternalDropsRef = useRef<Set<string>>(new Set());
   const queryClient = useQueryClient();
+  const createTaskRequestId = useCalendarUiStore((s) => s.createTaskRequestId);
+  const todayRequestId = useCalendarUiStore((s) => s.todayRequestId);
+  const lastHandledCreateRequestRef = useRef(createTaskRequestId);
+  const lastHandledTodayRequestRef = useRef(todayRequestId);
   
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
-  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [selectedDateRange, setSelectedDateRange] = useState<CalendarSlotSelection | null>(null);
   const [pendingSlotSelection, setPendingSlotSelection] = useState<CalendarSlotSelection | null>(null);
   const [calendarTaskPrefill, setCalendarTaskPrefill] = useState<CalendarSlotSelection | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const startDate = startOfMonth(subMonths(currentDate, 1)).toISOString();
   const endDate = endOfMonth(addMonths(currentDate, 1)).toISOString();
@@ -71,6 +75,14 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
 
   const { data: rangeTasks } = useTasks({ scope: 'scheduled', startDate, endDate });
   const { data: rangeEvents } = useEvents(startDate, endDate);
+  const isCreatingTask = activeTaskId?.startsWith(NEW_TASK_PANEL_ID) ?? false;
+  const activeTask = useMemo(() => {
+    if (!activeTaskId || activeTaskId.startsWith(NEW_TASK_PANEL_ID)) {
+      return null;
+    }
+
+    return (rangeTasks ?? []).find((task) => task.id === activeTaskId) ?? null;
+  }, [activeTaskId, rangeTasks]);
 
   const calendarData = useMemo((): CalendarItem[] => {
     const tasks = rangeTasks ?? [];
@@ -91,7 +103,7 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
             end,
             allDay,
             type: 'task' as const,
-            color: task.isCompleted ? CAL_COMPLETED_TASK_BG : CAL_PENDING_TASK_BG,
+            color: task.category?.color || '#3b82f6',
             data: task,
             classNames: ['fc-event-task', task.isCompleted ? 'fc-event-task-completed' : ''].filter(Boolean),
           };
@@ -357,13 +369,17 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
     
     if (itemType === 'event' || itemId.startsWith('event-')) {
       const eventData = clickInfo.event.extendedProps.data as Event;
+      setActiveTaskId(null);
+      setCalendarTaskPrefill(null);
       setSelectedEvent(eventData);
       setSelectedDateRange(null);
       setIsEventModalOpen(true);
     } else if (itemType === 'task' || itemId.startsWith('task-')) {
       const taskData = clickInfo.event.extendedProps.data as Task;
-      setSelectedTask(taskData);
-      setIsTaskModalOpen(true);
+      setIsEventModalOpen(false);
+      setSelectedEvent(null);
+      setSelectedDateRange(null);
+      setActiveTaskId(taskData.id);
     }
   }, []);
 
@@ -380,6 +396,28 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
     calendarApi.today();
     setTimeout(scrollToCurrentTime, 100);
   }, [scrollToCurrentTime]);
+
+  useEffect(() => {
+    if (createTaskRequestId === lastHandledCreateRequestRef.current) {
+      return;
+    }
+
+    lastHandledCreateRequestRef.current = createTaskRequestId;
+    setIsEventModalOpen(false);
+    setSelectedEvent(null);
+    setSelectedDateRange(null);
+    setCalendarTaskPrefill(null);
+    setActiveTaskId(`${NEW_TASK_PANEL_ID}-${createTaskRequestId}`);
+  }, [createTaskRequestId]);
+
+  useEffect(() => {
+    if (todayRequestId === lastHandledTodayRequestRef.current) {
+      return;
+    }
+
+    lastHandledTodayRequestRef.current = todayRequestId;
+    handleTodayClick();
+  }, [handleTodayClick, todayRequestId]);
 
   // Handle date navigation
   const handleDatesSet = useCallback((dateInfo: { start: Date; end: Date; view: { currentStart: Date; type: string } }) => {
@@ -490,26 +528,57 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
   }, [calendarData, activeCategory]);
 
   const calendarEvents = useMemo(() => {
-    return filteredCalendarItems.map((item) => ({
-      id: item.id,
-      title: item.title,
-      start: item.start,
-      end: item.end,
-      allDay: item.allDay,
-      backgroundColor: item.color,
-      borderColor: item.color,
-      classNames: [...(item.classNames || [])],
-      extendedProps: {
-        type: item.type,
-        data: item.data,
-      },
-    }));
-  }, [filteredCalendarItems]);
+    return filteredCalendarItems.map((item) => {
+      const isTask = item.type === 'task';
+      const priorityBorderColor = isTask
+        ? getPriorityCalendarColor((item.data as Task).priority)
+        : item.color;
+
+      return {
+        id: item.id,
+        title: item.title,
+        start: item.start,
+        end: item.end,
+        allDay: item.allDay,
+        display: 'block',
+        backgroundColor: item.color,
+        borderColor: priorityBorderColor,
+        classNames: [
+          ...(item.classNames || []),
+          'fc-event-filter-animated',
+          isTask && (item.data as Task).id === activeTaskId ? 'fc-event-task-active' : '',
+        ].filter(Boolean),
+        extendedProps: {
+          type: item.type,
+          data: item.data,
+        },
+      };
+    });
+  }, [activeTaskId, filteredCalendarItems]);
+
+  useEffect(() => {
+    const calendarApi = calendarRef.current?.getApi();
+    if (!calendarApi) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      calendarApi.updateSize();
+    });
+    const timeoutId = window.setTimeout(() => {
+      calendarApi.updateSize();
+    }, 280);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeCategory, activeTaskId]);
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="calendar-with-detail-panel">
       {/* Calendar */}
-      <div className="flex min-h-0 flex-1 flex-col p-4">
+      <div className="calendar-main-pane">
         <div className="min-h-0 flex-1">
         <FullCalendar
           ref={calendarRef}
@@ -566,7 +635,10 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
           allDayText="Cały dzień"
           noEventsText="Brak wydarzeń"
           views={{
-            dayGridMonth: { dayMaxEvents: MONTH_DAY_EVENT_LIMIT },
+            dayGridMonth: {
+              dayMaxEvents: MONTH_DAY_EVENT_LIMIT,
+              fixedWeekCount: false,
+            },
             timeGridWeek: { dayMaxEvents: 2 },
           }}
           moreLinkContent={(arg) => `Zobacz więcej (+${arg.num})`}
@@ -583,12 +655,16 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
           onClose={() => setPendingSlotSelection(null)}
           onChooseTask={(slot) => {
             setPendingSlotSelection(null);
-            setSelectedTask(null);
+            setIsEventModalOpen(false);
+            setSelectedEvent(null);
+            setSelectedDateRange(null);
             setCalendarTaskPrefill(slot);
-            setIsTaskModalOpen(true);
+            setActiveTaskId(NEW_TASK_PANEL_ID);
           }}
           onChooseEvent={(slot) => {
             setPendingSlotSelection(null);
+            setActiveTaskId(null);
+            setCalendarTaskPrefill(null);
             setSelectedEvent(null);
             setSelectedDateRange(slot);
             setIsEventModalOpen(true);
@@ -601,6 +677,7 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
           event={selectedEvent}
           initialDateRange={selectedDateRange}
           initialMode={selectedEvent ? 'view' : 'edit'}
+          presentation="panel"
           onClose={() => {
             setIsEventModalOpen(false);
             setSelectedEvent(null);
@@ -609,19 +686,16 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
         />
       )}
 
-      {/* Task Modal */}
-      {isTaskModalOpen && (
-        <TaskModal
-          task={selectedTask}
+      {activeTaskId && (isCreatingTask || activeTask) && (
+        <TaskDetailPanel
+          key={activeTaskId}
+          task={activeTask}
           categories={categories}
-          initialMode={selectedTask ? 'view' : 'edit'}
+          initialMode={activeTask ? 'view' : 'edit'}
           calendarSelectPrefill={calendarTaskPrefill}
-          onTaskUpdated={(patch) =>
-            setSelectedTask((t) => (t && t.id === patch.id ? { ...t, ...patch } : t))
-          }
+          presentation="panel"
           onClose={() => {
-            setIsTaskModalOpen(false);
-            setSelectedTask(null);
+            setActiveTaskId(null);
             setCalendarTaskPrefill(null);
           }}
         />

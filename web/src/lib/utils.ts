@@ -93,6 +93,21 @@ export function getPriorityChipClass(priority: number | null | undefined) {
   return `task-info-chip-priority-${normalizePriority(priority)}`;
 }
 
+export function getPriorityCalendarColor(priority: number | null | undefined) {
+  switch (normalizePriority(priority)) {
+    case 4:
+      return "#dc2626";
+    case 3:
+      return "#ea580c";
+    case 2:
+      return "#ca8a04";
+    case 1:
+      return "#64748b";
+    default:
+      return "#ca8a04";
+  }
+}
+
 export function getPriorityBorderClass(priority: number | null | undefined) {
   switch (normalizePriority(priority)) {
     case 4:

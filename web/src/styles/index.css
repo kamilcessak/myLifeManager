@@ -94,6 +94,13 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  overscroll-behavior: none;
+}
+
 .dark body {
   @apply bg-gray-900 text-gray-100;
 }
@@ -124,6 +131,40 @@ html.dark .rdp-root {
   @apply bg-gray-400;
 }
 
+.time-picker-content {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.time-picker-content:hover {
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.time-picker-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.time-picker-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.time-picker-content::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 9999px;
+}
+
+.time-picker-content:hover::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+}
+
+html.dark .time-picker-content:hover {
+  scrollbar-color: #4b5563 transparent;
+}
+
+html.dark .time-picker-content:hover::-webkit-scrollbar-thumb {
+  background-color: #4b5563;
+}
+
 /* FullCalendar custom styles */
 .fc {
   @apply h-full;
@@ -135,6 +176,58 @@ html.dark .rdp-root {
 
 html.dark .fc .fc-toolbar-title {
   @apply text-gray-100;
+}
+
+/* App shell */
+.app-shell {
+  --app-header-height: 64px;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background-color: var(--app-bg);
+  color: var(--app-text);
+}
+
+.app-header {
+  display: flex;
+  height: var(--app-header-height);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--app-border);
+  background-color: var(--app-surface);
+  padding: 0 16px;
+}
+
+.app-workspace {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.app-sidebar {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  width: 220px;
+  flex-shrink: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--app-border);
+  background-color: var(--app-surface);
+  transition: width 180ms ease;
+}
+
+.app-sidebar-collapsed {
+  width: 64px;
 }
 
 /* Toolbar buttons - ensure text stays visible on hover */
@@ -241,10 +334,19 @@ html.dark .fc .fc-timegrid-slot-label {
 
 .fc .fc-event {
   @apply border-0 rounded-md shadow-sm cursor-pointer;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    filter 180ms ease;
 }
 
 .fc .fc-event:hover {
   @apply shadow-md;
+}
+
+.fc-event-filter-animated {
+  animation: fadeIn 0.18s ease-out;
 }
 
 /* Month view "more" button */
@@ -271,7 +373,8 @@ html.dark .fc-timeGridDay-view .fc-more-link {
 
 /* Task card in calendar */
 .fc-event-task {
-  border-left: 3px solid currentColor !important;
+  border-left-width: 6px !important;
+  border-left-style: solid !important;
   position: relative;
   overflow: hidden;
 }
@@ -299,9 +402,22 @@ html.dark .fc-timeGridDay-view .fc-more-link {
   font-weight: 500;
 }
 
-/* Completed task in calendar — kolor tła z JS (zielony); bez „wyprania” całego bloku */
+/* Completed tasks keep their category color, only slightly muted. */
 .fc-event-task-completed {
-  opacity: 0.92;
+  opacity: 0.82;
+}
+
+.fc-event-task-active {
+  box-shadow:
+    0 0 0 2px #ffffff,
+    0 0 0 4px rgba(37, 99, 235, 0.75) !important;
+  filter: saturate(1.08);
+}
+
+html.dark .fc-event-task-active {
+  box-shadow:
+    0 0 0 2px #111827,
+    0 0 0 4px rgba(96, 165, 250, 0.8) !important;
 }
 
 /* For completed dot events */
@@ -323,7 +439,8 @@ html.dark .fc-timeGridDay-view .fc-more-link {
 
 /* Event card in calendar - solid, clean look */
 .fc-event-event {
-  border-left: 3px solid currentColor !important;
+  border-left-width: 3px !important;
+  border-left-style: solid !important;
 }
 
 .fc-timegrid-event.fc-event-event .fc-event-time,
@@ -524,24 +641,28 @@ html.dark .task-info-chip-priority-4 {
 
 /* Modal zadania: w light pełny kontrast tekstu (preflight / inherit na button potrafi go zabić) */
 html.light .modal-content .task-modal-priority-btn.task-info-chip-priority-4,
+html.light .task-detail-panel .task-modal-priority-btn.task-info-chip-priority-4,
 html[data-theme="light"] .modal-content .task-modal-priority-btn.task-info-chip-priority-4 {
   color: #7f1d1d !important;
   -webkit-text-fill-color: #7f1d1d;
 }
 
 html.light .modal-content .task-modal-priority-btn.task-info-chip-priority-3,
+html.light .task-detail-panel .task-modal-priority-btn.task-info-chip-priority-3,
 html[data-theme="light"] .modal-content .task-modal-priority-btn.task-info-chip-priority-3 {
   color: #7c2d12 !important;
   -webkit-text-fill-color: #7c2d12;
 }
 
 html.light .modal-content .task-modal-priority-btn.task-info-chip-priority-2,
+html.light .task-detail-panel .task-modal-priority-btn.task-info-chip-priority-2,
 html[data-theme="light"] .modal-content .task-modal-priority-btn.task-info-chip-priority-2 {
   color: #78350f !important;
   -webkit-text-fill-color: #78350f;
 }
 
 html.light .modal-content .task-modal-priority-btn.task-info-chip-priority-1,
+html.light .task-detail-panel .task-modal-priority-btn.task-info-chip-priority-1,
 html[data-theme="light"] .modal-content .task-modal-priority-btn.task-info-chip-priority-1 {
   color: #0f172a !important;
   -webkit-text-fill-color: #0f172a;
@@ -570,7 +691,7 @@ html[data-theme="light"] .modal-content .task-modal-priority-btn.task-info-chip-
 
 /* Split view layout */
 .split-view {
-  @apply flex h-[calc(100vh-64px)];
+  @apply flex h-full min-h-0 min-w-0 overflow-hidden;
 }
 
 .split-view-left {
@@ -584,6 +705,20 @@ html[data-theme="light"] .modal-content .task-modal-priority-btn.task-info-chip-
 .split-view-right {
   @apply flex-1 overflow-hidden;
   background-color: var(--app-bg);
+}
+
+.split-view-main {
+  @apply min-w-0 flex-1 overflow-hidden;
+  background-color: var(--app-bg);
+}
+
+.calendar-with-detail-panel {
+  @apply flex h-full min-w-0 overflow-hidden;
+  overscroll-behavior: none;
+}
+
+.calendar-main-pane {
+  @apply flex min-w-0 flex-1 flex-col p-4;
 }
 
 /* Inbox panel */
@@ -642,6 +777,30 @@ html.light .inbox-tab:hover {
   animation: fadeIn 0.2s ease-out;
 }
 
+@keyframes slideInRight {
+  from {
+    opacity: 0.98;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.24s ease-out;
+}
+
+@keyframes expandPanelWidth {
+  from {
+    width: 0;
+  }
+  to {
+    width: var(--task-detail-panel-width);
+  }
+}
+
 /* Modal overlay */
 .modal-overlay {
   @apply fixed inset-0 bg-black/50 flex items-center justify-center z-50;
@@ -657,23 +816,46 @@ html.light .inbox-tab:hover {
   overflow: hidden;
 }
 
+.task-detail-panel-shell {
+  --task-detail-panel-width: clamp(350px, 28vw, 400px);
+  @apply h-full shrink-0 overflow-hidden;
+  width: var(--task-detail-panel-width);
+  animation: expandPanelWidth 0.24s ease-out;
+}
+
+.task-detail-panel {
+  background-color: var(--app-surface);
+  color: var(--app-text);
+  border-left: 1px solid var(--app-border);
+  box-shadow: -12px 0 24px -18px rgb(15 23 42 / 0.35);
+  @apply flex h-full flex-col overflow-hidden;
+  width: var(--task-detail-panel-width);
+}
+
 .task-modal-scroll,
 .event-modal-scroll {
   flex: 1 1 0%;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .modal-content input,
 .modal-content textarea,
-.modal-content select {
+.modal-content select,
+.task-detail-panel input,
+.task-detail-panel textarea,
+.task-detail-panel select {
   background-color: #ffffff;
   color: #111827;
 }
 
 html.dark .modal-content input,
 html.dark .modal-content textarea,
-html.dark .modal-content select {
+html.dark .modal-content select,
+html.dark .task-detail-panel input,
+html.dark .task-detail-panel textarea,
+html.dark .task-detail-panel select {
   background-color: #374151;
   color: #f3f4f6;
 }
@@ -773,6 +955,22 @@ html.dark .task-modal-field-label {
   padding: 0;
 }
 
+.task-form-section {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #eaeaea;
+}
+
+.task-form-section-last {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+html.dark .task-form-section {
+  border-bottom-color: #374151;
+}
+
 html.light .task-modal-header-title {
   color: #111827;
 }
@@ -787,6 +985,19 @@ html.light .task-modal-close {
 
 html.dark .task-modal-close {
   color: #d1d5db;
+}
+
+.task-modal-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  background-color: #ffffff;
+  border-top: 1px solid #eeeeee;
+}
+
+html.dark .task-modal-footer {
+  background-color: #1f2937;
+  border-top-color: #374151;
 }
 
 html.light .task-modal-cancel,
@@ -902,6 +1113,7 @@ html[data-theme="light"] .task-modal-calendar-section {
 }
 
 html.light .modal-content .task-modal-calendar-section.border-blue-500,
+html.light .task-detail-panel .task-modal-calendar-section.border-blue-500,
 html[data-theme="light"] .modal-content .task-modal-calendar-section.border-blue-500 {
   background-color: #eff6ff !important;
   border-color: #3b82f6 !important;
@@ -913,6 +1125,7 @@ html[data-theme="dark"] .task-modal-calendar-section {
 }
 
 html.dark .modal-content .task-modal-calendar-section.border-blue-500,
+html.dark .task-detail-panel .task-modal-calendar-section.border-blue-500,
 html[data-theme="dark"] .modal-content .task-modal-calendar-section.border-blue-500 {
   background-color: rgba(59, 130, 246, 0.1) !important;
   border-color: #3b82f6 !important;
@@ -929,11 +1142,13 @@ html[data-theme="light"] .task-modal-calendar-row {
 }
 
 html.light .modal-content input.task-modal-calendar-checkbox,
+html.light .task-detail-panel input.task-modal-calendar-checkbox,
 html[data-theme="light"] .modal-content input.task-modal-calendar-checkbox {
   background-color: transparent !important;
 }
 
 html.dark .modal-content input.task-modal-calendar-checkbox,
+html.dark .task-detail-panel input.task-modal-calendar-checkbox,
 html[data-theme="dark"] .modal-content input.task-modal-calendar-checkbox {
   background-color: transparent !important;
 }
@@ -955,4 +1170,21 @@ html[data-theme="dark"] .task-modal-calendar-row {
 html.dark .task-modal-calendar-row svg,
 html[data-theme="dark"] .task-modal-calendar-row svg {
   color: #60a5fa !important;
+}
+
+@media (max-width: 900px) {
+  .calendar-with-detail-panel {
+    @apply relative;
+  }
+
+  .task-detail-panel-shell {
+    --task-detail-panel-width: min(100vw, 400px);
+    position: fixed;
+    top: var(--app-header-height);
+    right: 0;
+    bottom: 0;
+    z-index: 45;
+    height: auto;
+    width: var(--task-detail-panel-width);
+  }
 }

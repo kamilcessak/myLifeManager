@@ -1,6 +1,6 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Clock, Flag, Trash2, CalendarCheck, ChevronDown, Edit2, CheckCircle2, Undo2, UserRound } from 'lucide-react';
+import { X, Trash2, ChevronDown, Edit2, CheckCircle2, Undo2 } from 'lucide-react';
 import { Task, Category, Attachment, TaskAssignee } from '../types';
 import { tasksApi, attachmentsApi } from '../lib/api';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
@@ -11,36 +11,31 @@ import ReminderPicker from './ReminderPicker';
 import AssigneeAvatar from './AssigneeAvatar';
 import TaskActivityLog from './tasks/TaskActivityLog';
 import { cn, getPriorityChipClass, getPriorityLabel, normalizePriority } from '../lib/utils';
-import { useTheme } from '../context/ThemeContext';
 import { useEscapeToClose } from '../hooks/useEscapeToClose';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 import {
   format,
   addHours,
-  addDays,
-  addWeeks,
   startOfHour,
   startOfDay,
   endOfDay,
   set as setDateParts,
-  parse as parseDate,
-  startOfWeek,
-  startOfToday,
 } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import DatePicker from './DatePicker';
 import TimePicker, { firstSlotAfter, optionMinutes } from './TimePicker';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import type { CalendarSlotSelection } from './SelectAddTypeModal';
 
-interface TaskModalProps {
+interface TaskDetailPanelProps {
   task: Task | null;
   categories: Category[];
   onClose: () => void;
   initialMode?: 'view' | 'edit';
   calendarSelectPrefill?: CalendarSlotSelection | null;
   onTaskUpdated?: (patch: Partial<Task> & { id: string }) => void;
+  presentation?: 'modal' | 'panel';
 }
 
 type TaskFormState = {
@@ -48,10 +43,7 @@ type TaskFormState = {
   description: string;
   categoryId: string;
   priority: number;
-  deadline: string;
-  showOnCalendar: boolean;
   scheduledAllDay: boolean;
-  scheduledDate: string;
   scheduledStart: string;
   scheduledEnd: string;
   reminderMinutes: number | null;
@@ -59,26 +51,28 @@ type TaskFormState = {
 };
 
 function getTaskFormInitial(task: Task | null, prefill: CalendarSlotSelection | null | undefined): TaskFormState {
-  const isOnCalendar = !!task?.scheduledStart;
   const isAllDay = !!task?.scheduledAllDay;
+  const defaultStart = startOfHour(addHours(new Date(), 1));
+  const defaultEnd = startOfHour(addHours(new Date(), 2));
   if (task) {
+    const start = task.scheduledStart
+      ? new Date(task.scheduledStart)
+      : task.deadline
+        ? addHours(new Date(task.deadline), -1)
+        : defaultStart;
+    const end = task.scheduledEnd
+      ? new Date(task.scheduledEnd)
+      : task.deadline
+        ? new Date(task.deadline)
+        : defaultEnd;
     return {
       title: task.title || '',
       description: task.description || '',
       categoryId: task.categoryId || '',
       priority: task.priority || 2,
-      deadline: task.deadline ? format(new Date(task.deadline), "yyyy-MM-dd'T'HH:mm") : '',
-      showOnCalendar: isOnCalendar,
       scheduledAllDay: isAllDay,
-      scheduledDate: task.scheduledStart
-        ? format(new Date(task.scheduledStart), 'yyyy-MM-dd')
-        : format(addHours(new Date(), 24), 'yyyy-MM-dd'),
-      scheduledStart: task.scheduledStart
-        ? format(new Date(task.scheduledStart), "yyyy-MM-dd'T'HH:mm")
-        : format(startOfHour(addHours(new Date(), 1)), "yyyy-MM-dd'T'HH:mm"),
-      scheduledEnd: task.scheduledEnd
-        ? format(new Date(task.scheduledEnd), "yyyy-MM-dd'T'HH:mm")
-        : format(startOfHour(addHours(new Date(), 2)), "yyyy-MM-dd'T'HH:mm"),
+      scheduledStart: format(start, "yyyy-MM-dd'T'HH:mm"),
+      scheduledEnd: format(end, "yyyy-MM-dd'T'HH:mm"),
       reminderMinutes: task.reminderMinutes ?? null,
       assigneeId: task.assigneeId ?? task.assignee?.id ?? null,
     };
@@ -86,17 +80,15 @@ function getTaskFormInitial(task: Task | null, prefill: CalendarSlotSelection | 
   if (prefill) {
     if (prefill.allDay) {
       const d0 = startOfDay(prefill.start);
+      const d1 = endOfDay(prefill.start);
       return {
         title: '',
         description: '',
         categoryId: '',
         priority: 2,
-        deadline: format(d0, "yyyy-MM-dd'T'HH:mm"),
-        showOnCalendar: true,
         scheduledAllDay: true,
-        scheduledDate: format(prefill.start, 'yyyy-MM-dd'),
         scheduledStart: format(d0, "yyyy-MM-dd'T'HH:mm"),
-        scheduledEnd: format(endOfDay(prefill.start), "yyyy-MM-dd'T'HH:mm"),
+        scheduledEnd: format(d1, "yyyy-MM-dd'T'HH:mm"),
         reminderMinutes: null,
         assigneeId: null,
       };
@@ -106,10 +98,7 @@ function getTaskFormInitial(task: Task | null, prefill: CalendarSlotSelection | 
       description: '',
       categoryId: '',
       priority: 2,
-      deadline: format(prefill.start, "yyyy-MM-dd'T'HH:mm"),
-      showOnCalendar: true,
       scheduledAllDay: false,
-      scheduledDate: format(prefill.start, 'yyyy-MM-dd'),
       scheduledStart: format(prefill.start, "yyyy-MM-dd'T'HH:mm"),
       scheduledEnd: format(prefill.end, "yyyy-MM-dd'T'HH:mm"),
       reminderMinutes: null,
@@ -121,34 +110,29 @@ function getTaskFormInitial(task: Task | null, prefill: CalendarSlotSelection | 
     description: '',
     categoryId: '',
     priority: 2,
-    deadline: '',
-    showOnCalendar: false,
     scheduledAllDay: false,
-    scheduledDate: format(addHours(new Date(), 24), 'yyyy-MM-dd'),
-    scheduledStart: format(startOfHour(addHours(new Date(), 1)), "yyyy-MM-dd'T'HH:mm"),
-    scheduledEnd: format(startOfHour(addHours(new Date(), 2)), "yyyy-MM-dd'T'HH:mm"),
+    scheduledStart: format(defaultStart, "yyyy-MM-dd'T'HH:mm"),
+    scheduledEnd: format(defaultEnd, "yyyy-MM-dd'T'HH:mm"),
     reminderMinutes: null,
     assigneeId: null,
   };
 }
 
-export default function TaskModal({
+export default function TaskDetailPanel({
   task,
   categories,
   onClose,
   initialMode = 'edit',
   calendarSelectPrefill = null,
   onTaskUpdated,
-}: TaskModalProps) {
+  presentation = 'modal',
+}: TaskDetailPanelProps) {
   useEscapeToClose(onClose);
-  const { resolvedTheme } = useTheme();
   const queryClient = useQueryClient();
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const { data: teamMembersData } = useTeamMembers(activeWorkspaceId);
   const teamMembers = teamMembersData ?? [];
   const isEditing = !!task;
-  const calendarRowShowRef = useRef<HTMLLabelElement>(null);
-  const calendarRowAllDayRef = useRef<HTMLLabelElement>(null);
   const [mode, setMode] = useState<'view' | 'edit'>(isEditing ? initialMode : 'edit');
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const [isAssigneeDropdownOpen, setIsAssigneeDropdownOpen] = useState(false);
@@ -162,9 +146,6 @@ export default function TaskModal({
   useEffect(() => {
     if (!task) setPendingFiles([]);
   }, [task]);
-
-  // Determine if task is already on calendar
-  const isOnCalendar = !!task?.scheduledStart;
 
   const [formData, setFormData] = useState<TaskFormState>(() =>
     getTaskFormInitial(task, calendarSelectPrefill)
@@ -186,40 +167,19 @@ export default function TaskModal({
       ? task.assignee
       : null;
 
-  // Auto-enable calendar when deadline is set
-  useEffect(() => {
-    if (formData.deadline && !formData.showOnCalendar && !isEditing) {
-      // When deadline is set, suggest showing on calendar at that time
-      const deadlineDate = new Date(formData.deadline);
-      setFormData(prev => ({
-        ...prev,
-        showOnCalendar: true,
-        scheduledStart: format(deadlineDate, "yyyy-MM-dd'T'HH:mm"),
-        scheduledEnd: format(addHours(deadlineDate, 1), "yyyy-MM-dd'T'HH:mm"),
-      }));
-    }
-  }, [formData.deadline, isEditing]);
+  const getPlanningPayload = (data: TaskFormState) => {
+    const start = new Date(data.scheduledStart);
+    const end = new Date(data.scheduledEnd);
+    const scheduledStart = data.scheduledAllDay ? startOfDay(start) : start;
+    const scheduledEnd = data.scheduledAllDay ? endOfDay(end) : end;
 
-  useLayoutEffect(() => {
-    const applyCalendarRow = (el: HTMLLabelElement | null) => {
-      if (!el) return;
-      if (resolvedTheme === 'light') {
-        el.style.setProperty('background-color', 'transparent', 'important');
-        el.style.setProperty('color', '#111827', 'important');
-        el.style.setProperty('-webkit-text-fill-color', '#111827', 'important');
-        el.style.setProperty('border-color', 'transparent', 'important');
-        el.style.setProperty('box-shadow', 'none', 'important');
-      } else {
-        el.style.setProperty('background-color', 'transparent', 'important');
-        el.style.setProperty('color', '#f3f4f6', 'important');
-        el.style.setProperty('-webkit-text-fill-color', '#f3f4f6', 'important');
-        el.style.setProperty('border-color', 'transparent', 'important');
-        el.style.setProperty('box-shadow', 'none', 'important');
-      }
+    return {
+      deadline: scheduledEnd.toISOString(),
+      scheduledStart: scheduledStart.toISOString(),
+      scheduledEnd: scheduledEnd.toISOString(),
+      scheduledAllDay: data.scheduledAllDay,
     };
-    applyCalendarRow(calendarRowShowRef.current);
-    applyCalendarRow(calendarRowAllDayRef.current);
-  }, [resolvedTheme, formData.showOnCalendar]);
+  };
 
   const createMutation = useMutation({
     mutationFn: (vars: { data: typeof formData; queuedFiles: File[] }) => {
@@ -230,26 +190,13 @@ export default function TaskModal({
         description: data.description || undefined,
         categoryId: data.categoryId || undefined,
         priority: data.priority,
-        deadline: data.deadline ? new Date(data.deadline).toISOString() : undefined,
         reminderMinutes: data.reminderMinutes,
+        ...getPlanningPayload(data),
       };
 
       if (teamId) {
         payload.teamId = teamId;
         payload.assigneeId = data.assigneeId ?? null;
-      }
-
-      if (data.showOnCalendar) {
-        if (data.scheduledAllDay && data.scheduledDate) {
-          const d = new Date(data.scheduledDate);
-          payload.scheduledStart = startOfDay(d).toISOString();
-          payload.scheduledEnd = endOfDay(d).toISOString();
-          payload.scheduledAllDay = true;
-        } else if (data.scheduledStart && data.scheduledEnd) {
-          payload.scheduledStart = new Date(data.scheduledStart).toISOString();
-          payload.scheduledEnd = new Date(data.scheduledEnd).toISOString();
-          payload.scheduledAllDay = false;
-        }
       }
 
       return tasksApi.create(payload as Parameters<typeof tasksApi.create>[0]);
@@ -310,31 +257,12 @@ export default function TaskModal({
         description: data.description || undefined,
         categoryId: data.categoryId || undefined,
         priority: data.priority,
-        deadline: data.deadline ? new Date(data.deadline).toISOString() : undefined,
         reminderMinutes: data.reminderMinutes,
+        ...getPlanningPayload(data),
       };
 
       if (activeWorkspaceId) {
         payload.assigneeId = data.assigneeId ?? null;
-      }
-
-      // Handle calendar scheduling
-      if (data.showOnCalendar) {
-        if (data.scheduledAllDay && data.scheduledDate) {
-          const d = new Date(data.scheduledDate);
-          payload.scheduledStart = startOfDay(d).toISOString();
-          payload.scheduledEnd = endOfDay(d).toISOString();
-          payload.scheduledAllDay = true;
-        } else if (data.scheduledStart && data.scheduledEnd) {
-          payload.scheduledStart = new Date(data.scheduledStart).toISOString();
-          payload.scheduledEnd = new Date(data.scheduledEnd).toISOString();
-          payload.scheduledAllDay = false;
-        }
-      } else if (!data.showOnCalendar && isOnCalendar) {
-        // Remove from calendar - set to null
-        payload.scheduledStart = null;
-        payload.scheduledEnd = null;
-        payload.scheduledAllDay = false;
       }
 
       return tasksApi.update(task!.id, payload);
@@ -434,22 +362,19 @@ export default function TaskModal({
       return;
     }
 
-    if (formData.showOnCalendar) {
-      if (formData.scheduledAllDay) {
-        if (!formData.scheduledDate) {
-          toast.error('Wybierz dzień');
-          return;
-        }
-      } else {
-        if (!formData.scheduledStart || !formData.scheduledEnd) {
-          toast.error('Podaj czas rozpoczęcia i zakończenia');
-          return;
-        }
-        if (new Date(formData.scheduledStart) >= new Date(formData.scheduledEnd)) {
-          toast.error('Czas zakończenia musi być późniejszy niż rozpoczęcia');
-          return;
-        }
+    if (!formData.scheduledStart || !formData.scheduledEnd) {
+      toast.error('Podaj datę początkową i końcową');
+      return;
+    }
+
+    if (formData.scheduledAllDay) {
+      if (startOfDay(new Date(formData.scheduledStart)) > startOfDay(new Date(formData.scheduledEnd))) {
+        toast.error('Data końcowa nie może być wcześniejsza niż początkowa');
+        return;
       }
+    } else if (new Date(formData.scheduledStart) >= new Date(formData.scheduledEnd)) {
+      toast.error('Czas zakończenia musi być późniejszy niż rozpoczęcia');
+      return;
     }
 
     if (isEditing) {
@@ -466,7 +391,6 @@ export default function TaskModal({
   const taskStartMins = taskRangeStart.getHours() * 60 + taskRangeStart.getMinutes();
   const taskSlotAfterStart = firstSlotAfter(taskStartMins);
   const taskEndTimeMinMinutes =
-    formData.showOnCalendar &&
     !formData.scheduledAllDay &&
     taskSameCalendarDay &&
     taskSlotAfterStart
@@ -480,34 +404,19 @@ export default function TaskModal({
     { value: 4, label: 'Pilne' },
   ];
 
-  const applyQuickDeadline = (kind: 'today' | 'tomorrow' | 'nextWeek') => {
-    const today = startOfToday();
-    let dayStart: Date;
-    if (kind === 'today') {
-      dayStart = today;
-    } else if (kind === 'tomorrow') {
-      dayStart = addDays(today, 1);
-    } else {
-      const thisWeekMonday = startOfWeek(today, { weekStartsOn: 1 });
-      dayStart = addWeeks(thisWeekMonday, 1);
-    }
-    const prevT = formData.deadline ? format(new Date(formData.deadline), 'HH:mm') : '09:00';
-    const [h, m] = prevT.split(':').map((x) => parseInt(x, 10));
-    const combined = setDateParts(dayStart, {
-      hours: Number.isFinite(h) ? h : 9,
-      minutes: Number.isFinite(m) ? m : 0,
-      seconds: 0,
-      milliseconds: 0,
-    });
-    setFormData((prev) => ({
-      ...prev,
-      deadline: format(combined, "yyyy-MM-dd'T'HH:mm"),
-    }));
-  };
+  const isPanel = presentation === 'panel';
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content task-modal-content animate-fade-in" onClick={(e) => e.stopPropagation()}>
+    <div className={isPanel ? 'task-detail-panel-shell' : 'modal-overlay'} onClick={isPanel ? undefined : onClose}>
+      <aside
+        className={cn(
+          isPanel
+            ? 'task-detail-panel animate-slide-in-right'
+            : 'modal-content task-modal-content animate-fade-in'
+        )}
+        onClick={(e) => e.stopPropagation()}
+        aria-label={isEditing ? 'Szczegóły zadania' : 'Nowe zadanie'}
+      >
         <div className="task-modal-scroll">
         {/* Header */}
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
@@ -548,7 +457,8 @@ export default function TaskModal({
         </div>
 
         {/* Form / View */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 bg-white text-gray-900 dark:bg-transparent dark:text-gray-100">
+        <form onSubmit={handleSubmit} className="bg-white p-6 text-gray-900 dark:bg-transparent dark:text-gray-100">
+          <section className="task-form-section space-y-3">
           {/* Title */}
           <div>
             <label className="task-modal-field-label block text-sm font-medium text-gray-900 mb-1 dark:text-gray-300">
@@ -580,15 +490,44 @@ export default function TaskModal({
             />
           </div>
 
-          <AttachmentPanel
-            variant="task"
-            parentId={task?.id ?? null}
-            attachments={attachments}
-            onAttachmentsChange={setAttachments}
-            pendingFiles={pendingFiles}
-            onPendingFilesChange={!task ? setPendingFiles : undefined}
-            readOnly={mode === 'view'}
-          />
+          {/* Priority */}
+          <div>
+            <label className="task-modal-field-label block text-sm font-medium text-gray-900 mb-2 dark:text-gray-300">
+              Priorytet
+            </label>
+            {mode === 'view' ? (
+              <span
+                className={cn(
+                  'inline-flex items-center justify-center px-5 py-2.5 rounded-lg text-sm font-semibold',
+                  getPriorityChipClass(normalizedPriority)
+                )}
+              >
+                {getPriorityLabel(normalizedPriority)}
+              </span>
+            ) : (
+              <div className="flex gap-2">
+                {priorities.map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, priority: p.value })}
+                    className={cn(
+                      // Nie używamy tu `task-info-chip` — w CSS ma sztywne px-2 py-0.5 i nadpisuje padding z Tailwinda.
+                      // Bez opacity na całym przycisku — wtedy tekst w light wyglądał „wyprany” mimo text-*-900 na chipie.
+                      'task-modal-priority-btn inline-flex flex-1 items-center justify-center px-5 py-2.5 rounded-lg border text-sm font-semibold transition-all',
+                      getPriorityChipClass(p.value),
+                      normalizedPriority === p.value
+                        ? 'ring-2 ring-offset-1 ring-gray-400 ring-offset-white dark:ring-gray-500 dark:ring-offset-gray-800'
+                        : '',
+                      'border-transparent'
+                    )}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Category */}
           <div>
@@ -652,10 +591,7 @@ export default function TaskModal({
           {activeWorkspaceId !== null && (
             <div>
               <label className="task-modal-field-label block text-sm font-medium text-gray-900 mb-1 dark:text-gray-300">
-                <span className="flex items-center gap-2">
-                  <UserRound className="w-4 h-4" />
-                  Przypisany do
-                </span>
+                Przypisany do
               </label>
               <div className="relative">
                 <button
@@ -744,238 +680,131 @@ export default function TaskModal({
               </div>
             </div>
           )}
+          </section>
 
-          {/* Priority */}
+          <section className="task-form-section space-y-3">
+          {/* Date and time */}
           <div>
-            <label className="task-modal-field-label block text-sm font-medium text-gray-900 mb-2 dark:text-gray-300">
-              <span className="flex items-center gap-2">
-                <Flag className="w-4 h-4" />
-                Priorytet
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <span className="task-modal-field-label text-sm font-medium text-gray-900 dark:text-gray-300">
+                Data i czas
               </span>
-            </label>
-            {mode === 'view' ? (
-              <span
-                className={cn(
-                  'inline-flex items-center justify-center px-5 py-2.5 rounded-lg text-sm font-semibold',
-                  getPriorityChipClass(normalizedPriority)
-                )}
-              >
-                {getPriorityLabel(normalizedPriority)}
-              </span>
-            ) : (
-              <div className="flex gap-2">
-                {priorities.map((p) => (
-                  <button
-                    key={p.value}
-                    type="button"
-                    onClick={() => setFormData({ ...formData, priority: p.value })}
-                    className={cn(
-                      // Nie używamy tu `task-info-chip` — w CSS ma sztywne px-2 py-0.5 i nadpisuje padding z Tailwinda.
-                      // Bez opacity na całym przycisku — wtedy tekst w light wyglądał „wyprany” mimo text-*-900 na chipie.
-                      'task-modal-priority-btn inline-flex flex-1 items-center justify-center px-5 py-2.5 rounded-lg border text-sm font-semibold transition-all',
-                      getPriorityChipClass(p.value),
-                      normalizedPriority === p.value
-                        ? 'ring-2 ring-offset-1 ring-gray-400 ring-offset-white dark:ring-gray-500 dark:ring-offset-gray-800'
-                        : '',
-                      'border-transparent'
-                    )}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Deadline */}
-          <div>
-            <label className="task-modal-field-label block text-sm font-medium text-gray-900 mb-1 dark:text-gray-300">
-              <span className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                Termin wykonania (opcjonalnie)
-              </span>
-            </label>
-            {mode === 'view' ? (
-              <p className="text-sm text-gray-700 dark:text-gray-300">
-                {formData.deadline
-                  ? `${format(new Date(formData.deadline), 'PPP', { locale: pl })}, ${format(new Date(formData.deadline), 'HH:mm')}`
-                  : '—'}
-              </p>
-            ) : (
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <DatePicker
-                  className="min-w-[10rem] flex-1 basis-[11rem]"
-                  value={formData.deadline ? startOfDay(new Date(formData.deadline)) : undefined}
-                  onChange={(d) => {
-                    if (!d) {
-                      setFormData((prev) => ({ ...prev, deadline: '' }));
-                      return;
-                    }
-                    const prevT = formData.deadline
-                      ? format(new Date(formData.deadline), 'HH:mm')
-                      : '09:00';
-                    const [h, m] = prevT.split(':').map((x) => parseInt(x, 10));
-                    const combined = setDateParts(d, {
-                      hours: Number.isFinite(h) ? h : 9,
-                      minutes: Number.isFinite(m) ? m : 0,
-                      seconds: 0,
-                      milliseconds: 0,
-                    });
-                    setFormData((prev) => ({
-                      ...prev,
-                      deadline: format(combined, "yyyy-MM-dd'T'HH:mm"),
-                    }));
-                  }}
-                  placeholder="Bez terminu — wybierz datę"
-                />
-                <TimePicker
-                  className="w-full shrink-0 sm:w-[6.75rem]"
-                  value={formData.deadline ? format(new Date(formData.deadline), 'HH:mm') : '09:00'}
-                  onChange={(hm) => {
-                    const [h, m] = hm.split(':').map((x) => parseInt(x, 10));
+              <div className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 dark:bg-gray-800">
+                <Switch
+                  id="taskScheduledAllDay"
+                  type="button"
+                  size="default"
+                  className="border border-slate-300 data-[state=checked]:bg-blue-600 data-[state=unchecked]:bg-slate-300 dark:border-gray-600 dark:data-[state=checked]:bg-blue-500 dark:data-[state=unchecked]:bg-gray-600"
+                  checked={formData.scheduledAllDay}
+                  onCheckedChange={(checked) => {
+                    const isAllDay = checked === true;
                     setFormData((prev) => {
-                      if (!prev.deadline) {
-                        const base = new Date();
-                        const combined = setDateParts(base, {
-                          hours: Number.isFinite(h) ? h : 9,
-                          minutes: Number.isFinite(m) ? m : 0,
-                          seconds: 0,
-                          milliseconds: 0,
-                        });
-                        return { ...prev, deadline: format(combined, "yyyy-MM-dd'T'HH:mm") };
+                      if (isAllDay) {
+                        return {
+                          ...prev,
+                          scheduledAllDay: true,
+                          scheduledStart: format(startOfDay(new Date(prev.scheduledStart)), "yyyy-MM-dd'T'HH:mm"),
+                          scheduledEnd: format(endOfDay(new Date(prev.scheduledEnd)), "yyyy-MM-dd'T'HH:mm"),
+                        };
                       }
-                      const base = new Date(prev.deadline);
-                      const combined = setDateParts(base, {
-                        hours: Number.isFinite(h) ? h : 0,
-                        minutes: Number.isFinite(m) ? m : 0,
-                        seconds: 0,
-                        milliseconds: 0,
-                      });
-                      return { ...prev, deadline: format(combined, "yyyy-MM-dd'T'HH:mm") };
+
+                      return {
+                        ...prev,
+                        scheduledAllDay: false,
+                        scheduledStart: format(
+                          setDateParts(new Date(prev.scheduledStart), { hours: 9, minutes: 0, seconds: 0, milliseconds: 0 }),
+                          "yyyy-MM-dd'T'HH:mm"
+                        ),
+                        scheduledEnd: format(
+                          setDateParts(new Date(prev.scheduledEnd), { hours: 10, minutes: 0, seconds: 0, milliseconds: 0 }),
+                          "yyyy-MM-dd'T'HH:mm"
+                        ),
+                      };
                     });
                   }}
-                  disabled={!formData.deadline}
+                  disabled={mode === 'view'}
+                  aria-label="Cały dzień"
                 />
+                <label
+                  htmlFor="taskScheduledAllDay"
+                  className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-200"
+                >
+                  Cały dzień
+                </label>
               </div>
-            )}
-            {mode !== 'view' ? (
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => applyQuickDeadline('today')}
-                  className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-800 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-blue-500/40 dark:hover:bg-blue-500/15 dark:hover:text-blue-100"
-                >
-                  Dzisiaj
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyQuickDeadline('tomorrow')}
-                  className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-800 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-blue-500/40 dark:hover:bg-blue-500/15 dark:hover:text-blue-100"
-                >
-                  Jutro
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyQuickDeadline('nextWeek')}
-                  className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-800 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-blue-500/40 dark:hover:bg-blue-500/15 dark:hover:text-blue-100"
-                >
-                  W przyszłym tygodniu
-                </button>
-              </div>
-            ) : null}
-          </div>
-
-          {/* Reminder */}
-          {(formData.showOnCalendar || formData.deadline) && (
-            <ReminderPicker
-              value={formData.reminderMinutes}
-              onChange={(val) => setFormData({ ...formData, reminderMinutes: val })}
-              disabled={mode === 'view'}
-            />
-          )}
-
-          {/* Show on Calendar — outer box: w light jak reszta formularza (białe tło), bez ciemnej szarej ramki */}
-          <div
-            className={cn(
-              'task-modal-calendar-section rounded-lg p-4 transition-all',
-              formData.showOnCalendar
-                ? 'border-2 border-blue-500 bg-blue-50 dark:border-blue-500 dark:bg-blue-500/10'
-                : 'border border-gray-200 bg-white dark:border-gray-600 dark:bg-transparent'
-            )}
-          >
-            <label
-              ref={calendarRowShowRef}
-              className={cn(
-                'task-modal-calendar-row flex cursor-pointer items-center gap-3 rounded-md px-2 py-1',
-                'bg-transparent text-gray-900 dark:text-gray-100'
-              )}
-            >
-              <input
-                type="checkbox"
-                checked={formData.showOnCalendar}
-                onChange={(e) => setFormData({ ...formData, showOnCalendar: e.target.checked })}
-                className="task-modal-calendar-checkbox w-5 h-5 rounded border-gray-300 bg-transparent text-blue-600 focus:ring-blue-500 dark:border-gray-500 dark:text-blue-400"
-                disabled={mode === 'view'}
-              />
-              <span className="flex items-center gap-2 font-medium text-inherit">
-                <CalendarCheck className="h-5 w-5 shrink-0 text-gray-900 dark:text-blue-400" />
-                Pokaż na kalendarzu
-              </span>
-            </label>
+            </div>
             
-            {formData.showOnCalendar && (
-              <div className="mt-4 space-y-3">
-                <div className="flex items-center gap-2 px-2 py-1">
-                  <Checkbox
-                    id="taskScheduledAllDay"
-                    checked={formData.scheduledAllDay}
-                    onCheckedChange={(checked) =>
-                      setFormData({ ...formData, scheduledAllDay: checked === true })
-                    }
-                    disabled={mode === 'view'}
-                    className="border border-gray-400 dark:border-gray-600"
-                  />
-                  <label
-                    ref={calendarRowAllDayRef}
-                    htmlFor="taskScheduledAllDay"
-                    className={cn(
-                      'task-modal-calendar-row cursor-pointer text-sm font-medium',
-                      'bg-transparent text-gray-900 dark:text-gray-100'
-                    )}
-                  >
-                    W tym dniu (bez konkretnej godziny)
-                  </label>
-                </div>
+            <div className="space-y-3">
 
                 {formData.scheduledAllDay ? (
-                  <div className="mt-3 min-w-0">
-                    <label
-                      htmlFor="task-scheduled-day"
-                      className="mb-1.5 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400"
-                    >
-                      Dzień
-                    </label>
+                  <div className="space-y-2">
                     {mode === 'view' ? (
-                      <p className="text-sm text-gray-700 dark:text-gray-300">
-                        {formData.scheduledDate
-                          ? format(parseDate(formData.scheduledDate, 'yyyy-MM-dd', new Date()), 'PPP', {
-                              locale: pl,
-                            })
-                          : '—'}
-                      </p>
+                      <div className="grid grid-cols-1 gap-4 text-sm text-gray-700 dark:text-gray-300 sm:grid-cols-2">
+                        <p>
+                          <span className="font-medium text-gray-500 dark:text-gray-400">Od: </span>
+                          {format(new Date(formData.scheduledStart), 'PPP', { locale: pl })}
+                        </p>
+                        <p>
+                          <span className="font-medium text-gray-500 dark:text-gray-400">Do: </span>
+                          {format(new Date(formData.scheduledEnd), 'PPP', { locale: pl })}
+                        </p>
+                      </div>
                     ) : (
-                      <DatePicker
-                        id="task-scheduled-day"
-                        className="w-full"
-                        value={parseDate(formData.scheduledDate, 'yyyy-MM-dd', new Date())}
-                        onChange={(d) => {
-                          if (!d) {
-                            return;
-                          }
-                          const ymd = format(d, 'yyyy-MM-dd');
-                          setFormData((prev) => ({ ...prev, scheduledDate: ymd }));
-                        }}
-                      />
+                      <div
+                        className="flex flex-col gap-3"
+                        role="group"
+                        aria-label="Data i czas: początek i koniec"
+                      >
+                        <div className="w-full">
+                          <label
+                            htmlFor="task-all-day-start-date"
+                            className="mb-1 block text-xs font-normal text-slate-500 dark:text-gray-400"
+                          >
+                            Początek
+                          </label>
+                          <DatePicker
+                            id="task-all-day-start-date"
+                            className="w-full text-left"
+                            value={startOfDay(taskRangeStart)}
+                            onChange={(d) => {
+                              if (!d) {
+                                return;
+                              }
+                              setFormData((prev) => ({
+                                ...prev,
+                                scheduledStart: format(startOfDay(d), "yyyy-MM-dd'T'HH:mm"),
+                                scheduledEnd:
+                                  startOfDay(new Date(prev.scheduledEnd)) < startOfDay(d)
+                                    ? format(endOfDay(d), "yyyy-MM-dd'T'HH:mm")
+                                    : prev.scheduledEnd,
+                              }));
+                            }}
+                          />
+                        </div>
+                        <div className="w-full">
+                          <label
+                            htmlFor="task-all-day-end-date"
+                            className="mb-1 block text-xs font-normal text-slate-500 dark:text-gray-400"
+                          >
+                            Koniec
+                          </label>
+                          <DatePicker
+                            id="task-all-day-end-date"
+                            className="w-full text-left"
+                            value={startOfDay(taskRangeEnd)}
+                            onChange={(d) => {
+                              if (!d) {
+                                return;
+                              }
+                              setFormData((prev) => ({
+                                ...prev,
+                                scheduledEnd: format(endOfDay(d), "yyyy-MM-dd'T'HH:mm"),
+                              }));
+                            }}
+                            disabledDays={{ before: startOfDay(taskRangeStart) }}
+                          />
+                        </div>
+                      </div>
                     )}
                   </div>
                 ) : (
@@ -995,21 +824,21 @@ export default function TaskModal({
                       </div>
                     ) : (
                       <div
-                        className="flex flex-col gap-4 mt-3"
+                        className="flex flex-col gap-3"
                         role="group"
                         aria-label="Zakres na kalendarzu: początek i koniec"
                       >
                         <div className="w-full">
                           <label
                             htmlFor="task-range-start-date"
-                            className="mb-1.5 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400"
+                            className="mb-1 block text-xs font-normal text-slate-500 dark:text-gray-400"
                           >
                             Początek
                           </label>
-                          <div className="flex w-full gap-2">
+                          <div className="flex w-full items-center gap-2">
                             <DatePicker
                               id="task-range-start-date"
-                              className="min-w-0 flex-1 text-left"
+                              className="h-10 min-w-0 flex-1 text-left"
                               value={startOfDay(taskRangeStart)}
                               onChange={(d) => {
                                 if (!d) {
@@ -1040,7 +869,7 @@ export default function TaskModal({
                               }}
                             />
                             <TimePicker
-                              className="w-[110px] shrink-0"
+                              className="h-10 w-[110px] shrink-0"
                               value={format(taskRangeStart, 'HH:mm')}
                               onChange={(hm) => {
                                 const [h, m] = hm.split(':').map((x) => parseInt(x, 10));
@@ -1071,14 +900,14 @@ export default function TaskModal({
                         <div className="w-full">
                           <label
                             htmlFor="task-range-end-date"
-                            className="mb-1.5 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400"
+                            className="mb-1 block text-xs font-normal text-slate-500 dark:text-gray-400"
                           >
                             Koniec
                           </label>
-                          <div className="flex w-full gap-2">
+                          <div className="flex w-full items-center gap-2">
                             <DatePicker
                               id="task-range-end-date"
-                              className="min-w-0 flex-1 text-left"
+                              className="h-10 min-w-0 flex-1 text-left"
                               value={startOfDay(taskRangeEnd)}
                               onChange={(d) => {
                                 if (!d) {
@@ -1112,7 +941,7 @@ export default function TaskModal({
                               disabledDays={{ before: startOfDay(taskRangeStart) }}
                             />
                             <TimePicker
-                              className="w-[110px] shrink-0"
+                              className="h-10 w-[110px] shrink-0"
                               value={format(taskRangeEnd, 'HH:mm')}
                               minMinutes={taskEndTimeMinMinutes}
                               onChange={(hm) => {
@@ -1149,20 +978,37 @@ export default function TaskModal({
                   </div>
                 )}
               </div>
-            )}
           </div>
 
-          {task ? (
-            <TaskActivityLog
-              taskId={task.originalTaskId ?? task.id}
-              teamId={activeWorkspaceId}
+          <ReminderPicker
+            value={formData.reminderMinutes}
+            onChange={(val) => setFormData({ ...formData, reminderMinutes: val })}
+            disabled={mode === 'view'}
+          />
+          </section>
+
+          <section className="task-form-section task-form-section-last space-y-4">
+            <AttachmentPanel
+              variant="task"
+              parentId={task?.id ?? null}
+              attachments={attachments}
+              onAttachmentsChange={setAttachments}
+              pendingFiles={pendingFiles}
+              onPendingFilesChange={!task ? setPendingFiles : undefined}
+              readOnly={mode === 'view'}
             />
-          ) : null}
+            {task ? (
+              <TaskActivityLog
+                taskId={task.originalTaskId ?? task.id}
+                teamId={activeWorkspaceId}
+              />
+            ) : null}
+          </section>
         </form>
         </div>
 
         {/* Footer */}
-        <div className="task-modal-footer flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-white rounded-b-xl dark:border-gray-700 dark:bg-transparent shrink-0">
+        <div className="task-modal-footer sticky bottom-0 z-10 flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-white rounded-b-xl dark:border-gray-700 dark:bg-gray-800 shrink-0">
           {isEditing ? (
             <button
               type="button"
@@ -1205,7 +1051,7 @@ export default function TaskModal({
             )}
           </div>
         </div>
-      </div>
+      </aside>
     </div>
   );
 }
