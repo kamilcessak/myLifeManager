@@ -4,6 +4,7 @@ import { X, Trash2, ChevronDown, Edit2, CheckCircle2, Undo2 } from 'lucide-react
 import { Task, Category, Attachment, TaskAssignee } from '../types';
 import { tasksApi, attachmentsApi } from '../lib/api';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
+import { useCalendarUiStore } from '../store/useCalendarUiStore';
 import { useTeamMembers } from '../hooks/useTeams';
 import { patchTaskInTaskCaches, snapshotTaskCaches, restoreTaskCaches } from '../lib/workspaceTaskCache';
 import AttachmentPanel from './AttachmentPanel';
@@ -35,7 +36,7 @@ interface TaskDetailPanelProps {
   initialMode?: 'view' | 'edit';
   calendarSelectPrefill?: CalendarSlotSelection | null;
   onTaskUpdated?: (patch: Partial<Task> & { id: string }) => void;
-  presentation?: 'modal' | 'panel';
+  presentation?: 'modal' | 'panel' | 'bottom-sheet';
 }
 
 type TaskFormState = {
@@ -405,19 +406,18 @@ export default function TaskDetailPanel({
   ];
 
   const isPanel = presentation === 'panel';
+  const isBottomSheet = presentation === 'bottom-sheet';
 
-  return (
-    <div className={isPanel ? 'task-detail-panel-shell' : 'modal-overlay'} onClick={isPanel ? undefined : onClose}>
-      <aside
-        className={cn(
-          isPanel
-            ? 'task-detail-panel animate-slide-in-right'
-            : 'modal-content task-modal-content animate-fade-in'
-        )}
-        onClick={(e) => e.stopPropagation()}
-        aria-label={isEditing ? 'Szczegóły zadania' : 'Nowe zadanie'}
-      >
-        <div className="task-modal-scroll">
+  useEffect(() => {
+    if (!isBottomSheet) return;
+    const setOpen = useCalendarUiStore.getState().setMobileTaskBottomSheetOpen;
+    setOpen(true);
+    return () => setOpen(false);
+  }, [isBottomSheet]);
+
+  const inner = (
+    <>
+      <div className="task-modal-scroll">
         {/* Header */}
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <h2 className="task-modal-header-title text-lg font-semibold min-w-0 flex-1">
@@ -1051,6 +1051,49 @@ export default function TaskDetailPanel({
             )}
           </div>
         </div>
+    </>
+  );
+
+  if (isBottomSheet) {
+    return (
+      <div className="task-bottom-sheet-root md:hidden">
+        <button
+          type="button"
+          className="task-bottom-sheet-backdrop"
+          aria-label="Zamknij"
+          onClick={onClose}
+        />
+        <div className="task-detail-panel-shell task-detail-panel-shell--bottom-sheet">
+          <aside
+            className="task-detail-panel task-detail-panel--bottom-sheet"
+            onClick={(e) => e.stopPropagation()}
+            aria-label={isEditing ? 'Szczegóły zadania' : 'Nowe zadanie'}
+          >
+            <button
+              type="button"
+              className="bottom-sheet-handle"
+              onClick={onClose}
+              aria-label="Zamknij panel"
+            />
+            {inner}
+          </aside>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={isPanel ? 'task-detail-panel-shell' : 'modal-overlay'} onClick={isPanel ? undefined : onClose}>
+      <aside
+        className={cn(
+          isPanel
+            ? 'task-detail-panel animate-slide-in-right'
+            : 'modal-content task-modal-content animate-fade-in'
+        )}
+        onClick={(e) => e.stopPropagation()}
+        aria-label={isEditing ? 'Szczegóły zadania' : 'Nowe zadanie'}
+      >
+        {inner}
       </aside>
     </div>
   );

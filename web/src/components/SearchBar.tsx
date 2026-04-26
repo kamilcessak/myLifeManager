@@ -57,7 +57,12 @@ function WorkspaceBadge({ item, isForeign }: WorkspaceBadgeProps) {
   );
 }
 
-export default function SearchBar() {
+interface SearchBarProps {
+  /** `fullWidth` — zakładka mobilna; `headerIcon` — tylko lupa w nagłówku, rozwinięcie na całą szerokość */
+  variant?: 'default' | 'fullWidth' | 'headerIcon';
+}
+
+export default function SearchBar({ variant = 'default' }: SearchBarProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -68,6 +73,7 @@ export default function SearchBar() {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isOpeningItem, setIsOpeningItem] = useState(false);
+  const [isHeaderSearchExpanded, setIsHeaderSearchExpanded] = useState(false);
 
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
@@ -83,6 +89,12 @@ export default function SearchBar() {
   const { data: categoriesData } = useCategories();
 
   const categories = categoriesData || [];
+
+  useEffect(() => {
+    if (variant !== 'headerIcon' || !isHeaderSearchExpanded) return;
+    const id = window.requestAnimationFrame(() => inputRef.current?.focus());
+    return () => window.cancelAnimationFrame(id);
+  }, [variant, isHeaderSearchExpanded]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -104,12 +116,15 @@ export default function SearchBar() {
       if (!containerRef.current) return;
       if (!containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
+        if (variant === 'headerIcon') {
+          setIsHeaderSearchExpanded(false);
+        }
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [variant]);
 
   useEffect(() => {
     const runSearch = async () => {
@@ -182,6 +197,7 @@ export default function SearchBar() {
     }
 
     setIsOpen(false);
+    setIsHeaderSearchExpanded(false);
   };
 
   const handleItemClick = (item: SearchResultItem) => {
@@ -193,6 +209,7 @@ export default function SearchBar() {
     setResults([]);
     setActiveIndex(-1);
     setIsOpen(false);
+    setIsHeaderSearchExpanded(false);
     inputRef.current?.focus();
   };
 
@@ -233,11 +250,12 @@ export default function SearchBar() {
     if (event.key === 'Escape') {
       event.preventDefault();
       setIsOpen(false);
+      setIsHeaderSearchExpanded(false);
       inputRef.current?.blur();
     }
   };
 
-  const renderResultButton = (item: SearchResultItem) => {
+  function renderResultButton(item: SearchResultItem) {
     const isActive =
       flatResults[activeIndex]?.id === item.id && flatResults[activeIndex]?.type === item.type;
     const isForeign = item.teamId !== activeWorkspaceId;
@@ -249,7 +267,6 @@ export default function SearchBar() {
       'flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition';
     const hoverClasses = 'hover:bg-gray-100 dark:hover:bg-gray-700';
     const activeClasses = isActive ? 'bg-gray-100 dark:bg-gray-700' : '';
-    // Subtle hint that clicking this result will switch workspace context.
     const foreignClasses = isForeign
       ? 'bg-amber-50/40 ring-1 ring-amber-200/60 dark:bg-amber-500/5 dark:ring-amber-500/20'
       : '';
@@ -283,10 +300,128 @@ export default function SearchBar() {
         </div>
       </button>
     );
-  };
+  }
+
+  if (variant === 'headerIcon') {
+    return (
+      <div ref={containerRef} className="relative shrink-0">
+        <button
+          type="button"
+          onClick={() => setIsHeaderSearchExpanded((prev) => !prev)}
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
+          aria-expanded={isHeaderSearchExpanded}
+          aria-label="Szukaj"
+        >
+          <Search className="h-5 w-5" />
+        </button>
+
+        {isHeaderSearchExpanded ? (
+          <div className="search-bar-header-expand fixed inset-x-0 top-[var(--app-header-height)] z-[60] max-h-[calc(100dvh-var(--app-header-height))] overflow-y-auto border-b border-[var(--app-border)] bg-[var(--app-surface)] p-3 shadow-lg">
+            <div className="relative mx-auto w-full max-w-3xl">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 app-text-muted" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={handleInputKeyDown}
+                onFocus={() => setIsOpen(true)}
+                placeholder="Szukaj zadań i wydarzeń..."
+                className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] py-2.5 pl-10 pr-12 text-sm text-[var(--app-text)] outline-none transition focus:border-blue-400 focus:bg-[var(--app-surface)] focus:ring-2 focus:ring-blue-100 dark:focus:border-blue-500 dark:focus:ring-blue-500/20"
+              />
+              {query.trim().length > 0 ? (
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 app-text-muted transition hover:bg-[var(--app-surface)] hover:text-[var(--app-text)]"
+                  aria-label="Wyczyść wyszukiwarkę"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+
+            {isOpen ? (
+              <div className="mx-auto mt-2 max-h-[min(70vh,28rem)] w-full max-w-3xl overflow-y-auto rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-2 shadow-lg">
+                {isLoading ? (
+                  <div className="flex items-center gap-2 px-3 py-4 text-sm app-text-muted">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Szukam...</span>
+                  </div>
+                ) : !debouncedQuery.trim() ? (
+                  <div className="px-3 py-4 text-sm app-text-muted">
+                    <p className="font-medium app-text">Zacznij wpisywać, aby wyszukać</p>
+                  </div>
+                ) : results.length === 0 && debouncedQuery.trim() ? (
+                  <div className="px-3 py-4 text-sm app-text-muted">Nie znaleziono</div>
+                ) : (
+                  <div className="space-y-2">
+                    {groupedResults.tasks.length > 0 && (
+                      <div>
+                        <div className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide app-text-muted">
+                          Zadania
+                        </div>
+                        <div className="space-y-1">{groupedResults.tasks.map((item) => renderResultButton(item))}</div>
+                      </div>
+                    )}
+                    {groupedResults.events.length > 0 && (
+                      <div>
+                        <div className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide app-text-muted">
+                          Wydarzenia
+                        </div>
+                        <div className="space-y-1">{groupedResults.events.map((item) => renderResultButton(item))}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {isOpeningItem && (
+          <div className="pointer-events-none absolute inset-x-0 -bottom-10 flex justify-center">
+            <div className="rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-1 text-xs app-text-muted shadow">
+              Otwieram element...
+            </div>
+          </div>
+        )}
+
+        {isTaskModalOpen && selectedTask && (
+          <TaskModal
+            task={selectedTask}
+            categories={categories}
+            initialMode="view"
+            onTaskUpdated={(patch) =>
+              setSelectedTask((t) => (t && t.id === patch.id ? { ...t, ...patch } : t))
+            }
+            onClose={() => {
+              setIsTaskModalOpen(false);
+              setSelectedTask(null);
+            }}
+          />
+        )}
+
+        {isEventModalOpen && selectedEvent && (
+          <EventModal
+            event={selectedEvent}
+            initialDateRange={null}
+            initialMode="view"
+            onClose={() => {
+              setIsEventModalOpen(false);
+              setSelectedEvent(null);
+            }}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div ref={containerRef} className="relative w-full max-w-xl">
+    <div
+      ref={containerRef}
+      className={variant === 'fullWidth' ? 'relative w-full max-w-none' : 'relative w-full max-w-xl'}
+    >
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 app-text-muted" />
         <input
@@ -311,9 +446,11 @@ export default function SearchBar() {
             <X className="h-4 w-4" />
           </button>
         )}
-        <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-0.5 text-[10px] app-text-muted shadow-sm">
-          {shortcutLabel}
-        </kbd>
+        {variant === 'default' ? (
+          <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-0.5 text-[10px] app-text-muted shadow-sm">
+            {shortcutLabel}
+          </kbd>
+        ) : null}
       </div>
 
       {isOpen && (

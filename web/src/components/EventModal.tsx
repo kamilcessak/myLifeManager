@@ -273,12 +273,14 @@ export default function EventModal({
     mutationFn: (vars: { data: typeof formData; queuedFiles: File[] }) => {
       const { data } = vars;
       const teamId = useWorkspaceStore.getState().activeWorkspaceId;
+      const assigneeIdClean =
+        typeof data.assigneeId === 'string' && data.assigneeId.trim() !== '' ? data.assigneeId.trim() : null;
       return eventsApi.create({
         title: data.title,
         description: data.description,
         location: data.location,
         categoryId: data.categoryId || undefined,
-        ...(teamId ? { teamId, assigneeId: data.assigneeId ?? null } : {}),
+        ...(teamId ? { teamId, assigneeId: assigneeIdClean } : {}),
         startTime: new Date(data.startTime).toISOString(),
         endTime: new Date(data.endTime).toISOString(),
         isAllDay: data.isAllDay,
@@ -337,8 +339,10 @@ export default function EventModal({
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: typeof formData) =>
-      eventsApi.update(event!.originalEventId || event!.id, {
+    mutationFn: (data: typeof formData) => {
+      const assigneeIdClean =
+        typeof data.assigneeId === 'string' && data.assigneeId.trim() !== '' ? data.assigneeId.trim() : null;
+      return eventsApi.update(event!.originalEventId || event!.id, {
         title: data.title,
         description: data.description,
         location: data.location,
@@ -348,8 +352,9 @@ export default function EventModal({
         isAllDay: data.isAllDay,
         recurrenceRule: data.recurrenceRule || undefined,
         reminderMinutes: data.reminderMinutes,
-        ...(activeWorkspaceId ? { assigneeId: data.assigneeId ?? null } : {}),
-      }),
+        ...(activeWorkspaceId ? { assigneeId: assigneeIdClean } : {}),
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });

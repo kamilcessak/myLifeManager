@@ -1246,7 +1246,7 @@ html[data-theme="dark"] .task-modal-calendar-row svg {
     @apply relative;
   }
 
-  .task-detail-panel-shell {
+  .task-detail-panel-shell:not(.task-detail-panel-shell--bottom-sheet) {
     --task-detail-panel-width: min(100vw, 400px);
     position: fixed;
     top: var(--app-header-height);
@@ -1256,4 +1256,316 @@ html[data-theme="dark"] .task-modal-calendar-row svg {
     height: auto;
     width: var(--task-detail-panel-width);
   }
+}
+
+/* --- Mobile shell (< 768px): bottom nav, FAB, overlays, bottom sheet --- */
+:root {
+  --mobile-bottom-nav-height: 60px;
+}
+
+@media (max-width: 767px) {
+  /* Sidebar jest już ukryty przez Tailwind (hidden md:flex); wymuszenie w MQ dla spójności z breakpointem 768px */
+  .app-sidebar {
+    display: none !important;
+  }
+
+  .app-main-area {
+    /* Miejsce na bottom nav (~60px) + FAB (~56px) + oddech — treść nie chowa się pod paskiem */
+    padding-bottom: calc(var(--mobile-bottom-nav-height) + 72px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .calendar-main-pane {
+    padding: 8px !important;
+  }
+
+  .calendar-keep-mounted {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .mobile-stack-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    background-color: var(--app-bg);
+  }
+
+  .fc-timegrid-event .fc-event-main {
+    min-height: 32px;
+  }
+
+  .fc-timegrid-event {
+    min-height: 36px;
+  }
+
+  .fc-item-content--mobile {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 4px 8px;
+    min-height: 28px;
+  }
+
+  .fc-item-mobile-row {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .fc-item-time--mobile-start {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .fc-item-title--mobile {
+    flex: 1;
+    min-width: 0;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  /* Nagłówek kalendarza: wiersz 1 — prev | miesiąc | next; wiersz 2 — Dziś + przełącznik widoku */
+  .fc-header-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding-bottom: 4px;
+  }
+
+  .fc-header-toolbar .fc-toolbar-chunk {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .fc-header-toolbar .fc-toolbar-title {
+    margin: 0 4px;
+    white-space: nowrap;
+    font-size: 1rem;
+    line-height: 1.25;
+    max-width: min(70vw, 280px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Widok miesiąca na mobile: ukryj wiersze zdarzeń — w komórce tylko kropki z dayCellContent */
+  .fc-dayGridMonth-view .fc-daygrid-event-harness,
+  .fc-dayGridMonth-view .fc-daygrid-more-link {
+    display: none !important;
+  }
+
+  .fc-dayGridMonth-view .fc-daygrid-day-events {
+    min-height: 0 !important;
+    margin-bottom: 0 !important;
+  }
+
+  .fc-mobile-day-cell-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    padding-top: 2px;
+    padding-bottom: 4px;
+    min-height: 2.5rem;
+    /* Niestandardowa zawartość komórki nie może przejmować zdarzeń — inaczej FullCalendar nie widzi zaznaczenia (select) i nie otwiera się „Co chcesz dodać?” */
+    pointer-events: none;
+  }
+
+  .fc-mobile-day-cell-inner .fc-daygrid-day-number {
+    position: static;
+    margin: 0;
+    padding: 0;
+    line-height: 1.2;
+  }
+
+  .fc-mobile-day-dots {
+    display: flex;
+    min-height: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+  }
+
+  .fc-mobile-day-dot {
+    width: 6px;
+    height: 6px;
+    flex-shrink: 0;
+    border-radius: 9999px;
+  }
+
+  .fc-mobile-month-event-placeholder {
+    display: none;
+  }
+}
+
+.mobile-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  width: 100%;
+  height: calc(var(--mobile-bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+  align-items: stretch;
+  border-top: 1px solid #eeeeee;
+  background-color: #ffffff;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html.dark .mobile-bottom-nav {
+  border-top-color: var(--app-border);
+  background-color: var(--app-surface);
+}
+
+.mobile-bottom-nav__item {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 4px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--app-text-muted);
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.mobile-bottom-nav__item--active {
+  color: #2563eb;
+}
+
+html.dark .mobile-bottom-nav__item--active {
+  color: #93c5fd;
+}
+
+.mobile-bottom-nav__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-fab {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(var(--mobile-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 10px);
+  /* Wyżej niż bottom nav (40), niżej niż bottom sheet zadania (50) */
+  z-index: 41;
+  width: 56px;
+  height: 56px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background-color: #3b82f6;
+  box-shadow:
+    0 4px 14px rgba(37, 99, 235, 0.45),
+    0 2px 6px rgba(15, 23, 42, 0.12);
+  transition: transform 0.15s ease;
+}
+
+.mobile-fab:active {
+  transform: scale(0.96);
+}
+
+.mobile-fab--hidden {
+  display: none !important;
+}
+
+.task-bottom-sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.task-bottom-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+  border: 0;
+  background-color: rgb(0 0 0 / 0.4);
+  padding: 0;
+}
+
+.task-detail-panel-shell.task-detail-panel-shell--bottom-sheet {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  width: 100% !important;
+  max-height: min(92vh, calc(100dvh - var(--app-header-height) - 16px));
+  flex-direction: column;
+  align-items: stretch;
+  animation: slideInBottom 0.28s ease-out;
+}
+
+.task-detail-panel--bottom-sheet {
+  display: flex;
+  width: 100% !important;
+  max-height: inherit;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 20px 20px 0 0;
+  border-left: none !important;
+  border-top: 1px solid var(--app-border);
+  box-shadow: 0 -16px 48px -20px rgb(15 23 42 / 0.35);
+}
+
+.task-detail-panel--bottom-sheet .task-modal-footer {
+  border-radius: 0;
+}
+
+.bottom-sheet-handle {
+  flex-shrink: 0;
+  width: 44px;
+  height: 5px;
+  margin: 10px auto 4px;
+  cursor: pointer;
+  border: 0;
+  border-radius: 9999px;
+  background-color: #9ca3af;
+  padding: 0;
+}
+
+html.dark .bottom-sheet-handle {
+  background-color: #6b7280;
+}
+
+@keyframes slideInBottom {
+  from {
+    opacity: 0.96;
+    transform: translateY(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in-bottom {
+  animation: slideInBottom 0.28s ease-out;
 }

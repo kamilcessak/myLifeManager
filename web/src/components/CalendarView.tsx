@@ -4,13 +4,20 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin, { Draggable } from '@fullcalendar/interaction';
-import { EventClickArg, EventDropArg, DateSelectArg, EventContentArg } from '@fullcalendar/core';
+import {
+  EventClickArg,
+  EventDropArg,
+  DateSelectArg,
+  EventContentArg,
+  DayCellContentArg,
+} from '@fullcalendar/core';
 import {
   startOfMonth,
   endOfMonth,
   addMonths,
   subMonths,
   subDays,
+  addDays,
   startOfDay,
   endOfDay,
   format,
@@ -22,6 +29,8 @@ import { useTasks } from '../hooks/useTasks';
 import { useEvents } from '../hooks/useEvents';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
 import { useCalendarUiStore } from '../store/useCalendarUiStore';
+import { useMobileNavStore } from '../store/useMobileNavStore';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { CategoryFilter } from '../store/useCategoryFilterStore';
 import { patchTaskInTaskCaches, snapshotTaskCaches, restoreTaskCaches } from '../lib/workspaceTaskCache';
 import EventModal from './EventModal';
@@ -50,6 +59,8 @@ const spansMultipleCalendarDays = (start: Date, end: Date): boolean => {
 };
 
 export default function CalendarView({ activeCategory }: CalendarViewProps) {
+  const isMobile = useIsMobile();
+  const activeMobileTab = useMobileNavStore((s) => s.activeTab);
   const MONTH_DAY_EVENT_LIMIT = 4;
   const calendarRef = useRef<FullCalendar>(null);
   const draggableRef = useRef<Draggable | null>(null);
@@ -420,10 +431,30 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
     handleTodayClick();
   }, [handleTodayClick, todayRequestId]);
 
-  // Handle date navigation
+  // Handle date navigation + sync header month label (mobile)
   const handleDatesSet = useCallback((dateInfo: { start: Date; end: Date; view: { currentStart: Date; type: string } }) => {
     setCurrentDate(dateInfo.view.currentStart);
   }, []);
+
+  useEffect(() => {
+    const api = calendarRef.current?.getApi();
+    if (!api || !isMobile) return;
+    if (api.view.type === 'timeGridWeek') {
+      api.changeView('timeGridDay');
+    }
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!isMobile || activeMobileTab !== 'calendar') return;
+    const api = calendarRef.current?.getApi();
+    if (!api) return;
+    const frame = window.requestAnimationFrame(() => api.updateSize());
+    const timeout = window.setTimeout(() => api.updateSize(), 280);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
+    };
+  }, [isMobile, activeMobileTab]);
 
   const focusFirstTaskInDayView = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -451,64 +482,84 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
     return 'none';
   }, [focusFirstTaskInDayView]);
 
-  const renderEventContent = useCallback((arg: EventContentArg) => {
-    const isTask = arg.event.extendedProps.type === 'task';
-    const taskData = isTask ? (arg.event.extendedProps.data as Task) : null;
-    const eventData = !isTask ? (arg.event.extendedProps.data as Event) : null;
-    const assignee = isTask ? taskData?.assignee ?? null : eventData?.assignee ?? null;
+  const renderEventContent = useCallback(
+    (arg: EventContentArg) => {
+      if (isMobile && arg.view.type === 'dayGridMonth') {
+        return <span className="fc-mobile-month-event-placeholder" aria-hidden />;
+      }
 
-    const fullTitle = arg.event.title;
-    const start = arg.event.start;
-    const end = arg.event.end;
-    const timeRangeLabel =
-      start && !arg.event.allDay
-        ? end
-          ? `${format(start, 'HH:mm')} - ${format(end, 'HH:mm')}`
-          : (arg.timeText ?? format(start, 'HH:mm'))
-        : null;
+      const isTask = arg.event.extendedProps.type === 'task';
+      const taskData = isTask ? (arg.event.extendedProps.data as Task) : null;
+      const eventData = !isTask ? (arg.event.extendedProps.data as Event) : null;
+      const assignee = isTask ? taskData?.assignee ?? null : eventData?.assignee ?? null;
 
-    return (
-      <div className="fc-item-content" title={fullTitle}>
-        <div className="fc-item-meta-row">
-          <div className="fc-item-meta-left">
-            {isTask && taskData ? (
-              <button
-                type="button"
-                className="fc-item-checkbox flex-shrink-0 h-3.5 w-3.5 rounded border border-white/80 bg-white/20 p-0 text-white flex items-center justify-center"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleToggleComplete(taskData.id, taskData.isCompleted);
-                }}
-                aria-label={taskData.isCompleted ? 'Odznacz jako ukończone' : 'Oznacz jako ukończone'}
-              >
-                {taskData.isCompleted ? <CheckSquare className="h-3 w-3" strokeWidth={2.5} /> : null}
-              </button>
-            ) : null}
-            {!isTask ? (
-              <span className="fc-item-type-icon" aria-hidden="true">
-                <CalendarCheck className="h-3.5 w-3.5" strokeWidth={2} />
-              </span>
-            ) : null}
-            {timeRangeLabel ? (
-              <span className="fc-item-time">{timeRangeLabel}</span>
+      const fullTitle = arg.event.title;
+      const start = arg.event.start;
+      const end = arg.event.end;
+      const timeRangeLabel =
+        start && !arg.event.allDay
+          ? end
+            ? `${format(start, 'HH:mm')} - ${format(end, 'HH:mm')}`
+            : (arg.timeText ?? format(start, 'HH:mm'))
+          : null;
+      const timeStartOnly =
+        start && !arg.event.allDay ? format(start, 'HH:mm') : null;
+
+      if (isMobile) {
+        return (
+          <div className="fc-item-content fc-item-content--mobile" title={fullTitle}>
+            <div className="fc-item-mobile-row">
+              {timeStartOnly ? (
+                <span className="fc-item-time fc-item-time--mobile-start">{timeStartOnly}</span>
+              ) : null}
+              <span className="fc-item-title fc-item-title--mobile">{arg.event.title}</span>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="fc-item-content" title={fullTitle}>
+          <div className="fc-item-meta-row">
+            <div className="fc-item-meta-left">
+              {isTask && taskData ? (
+                <button
+                  type="button"
+                  className="fc-item-checkbox flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded border border-white/80 bg-white/20 p-0 text-white"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleToggleComplete(taskData.id, taskData.isCompleted);
+                  }}
+                  aria-label={taskData.isCompleted ? 'Odznacz jako ukończone' : 'Oznacz jako ukończone'}
+                >
+                  {taskData.isCompleted ? <CheckSquare className="h-3 w-3" strokeWidth={2.5} /> : null}
+                </button>
+              ) : null}
+              {!isTask ? (
+                <span className="fc-item-type-icon" aria-hidden="true">
+                  <CalendarCheck className="h-3.5 w-3.5" strokeWidth={2} />
+                </span>
+              ) : null}
+              {timeRangeLabel ? <span className="fc-item-time">{timeRangeLabel}</span> : null}
+            </div>
+            {assignee ? (
+              <div className="fc-item-assignee">
+                <AssigneeAvatar
+                  assignee={assignee}
+                  size="xs"
+                  className="h-3.5 w-3.5 text-[9px]"
+                  showTitle
+                />
+              </div>
             ) : null}
           </div>
-          {assignee ? (
-            <div className="fc-item-assignee">
-              <AssigneeAvatar
-                assignee={assignee}
-                size="xs"
-                className="h-3.5 w-3.5 text-[9px]"
-                showTitle
-              />
-            </div>
-          ) : null}
+          <span className="fc-item-title">{arg.event.title}</span>
         </div>
-        <span className="fc-item-title">{arg.event.title}</span>
-      </div>
-    );
-  }, [handleToggleComplete]);
+      );
+    },
+    [handleToggleComplete, isMobile],
+  );
 
   const onCalendarEventResize = useCallback((info: { event: { id: string; start: Date | null; end: Date | null } }) => {
     if (!info.event.start || !info.event.end) {
@@ -538,6 +589,51 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
       return itemCategoryId === activeCategory || itemCategoryName === activeCategory;
     });
   }, [calendarData, activeCategory]);
+
+  /** Na mobile w widoku miesiąca: max 3 unikalne kolory kategorii na dzień (kropki pod numerem dnia). */
+  const mobileMonthDayDotColors = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const item of filteredCalendarItems) {
+      const color = item.color || '#3b82f6';
+      const startDay = startOfDay(item.start);
+      const endInclusive = new Date(item.end.getTime() - 1);
+      const endDay = startOfDay(endInclusive);
+      let cursor = startDay;
+      while (cursor.getTime() <= endDay.getTime()) {
+        const key = format(cursor, 'yyyy-MM-dd');
+        const list = map.get(key) ?? [];
+        if (list.length < 3 && !list.includes(color)) {
+          list.push(color);
+        }
+        map.set(key, list);
+        cursor = addDays(cursor, 1);
+      }
+    }
+    return map;
+  }, [filteredCalendarItems]);
+
+  const renderDayCellContent = useCallback(
+    (arg: DayCellContentArg) => {
+      if (!isMobile || arg.view.type !== 'dayGridMonth') {
+        return false;
+      }
+      const dayKey = format(startOfDay(arg.date), 'yyyy-MM-dd');
+      const colors = mobileMonthDayDotColors.get(dayKey) ?? [];
+      return (
+        <div className="fc-mobile-day-cell-inner">
+          <a className="fc-daygrid-day-number">{arg.dayNumberText}</a>
+          {colors.length > 0 ? (
+            <div className="fc-mobile-day-dots" aria-hidden>
+              {colors.map((c, i) => (
+                <span key={`${dayKey}-dot-${i}`} className="fc-mobile-day-dot" style={{ backgroundColor: c }} />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      );
+    },
+    [isMobile, mobileMonthDayDotColors],
+  );
 
   const calendarEvents = useMemo(() => {
     return filteredCalendarItems.map((item) => {
@@ -595,18 +691,26 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView="timeGridWeek"
+          initialView={isMobile ? 'timeGridDay' : 'timeGridWeek'}
           customButtons={{
             todayScroll: {
               text: 'Dziś',
               click: handleTodayClick,
             },
           }}
-          headerToolbar={{
-            left: 'prev,next todayScroll',
-            center: 'title',
-            right: 'dayGridMonth,timeGridWeek,timeGridDay',
-          }}
+          headerToolbar={
+            isMobile
+              ? {
+                  left: 'prev title next',
+                  center: 'todayScroll dayGridMonth timeGridDay',
+                  right: '',
+                }
+              : {
+                  left: 'prev,next todayScroll',
+                  center: 'title',
+                  right: 'dayGridMonth,timeGridWeek,timeGridDay',
+                }
+          }
           locale="pl"
           firstDay={1}
           slotMinTime="00:00:00"
@@ -625,6 +729,7 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
           select={handleDateSelect}
           eventClick={handleEventClick}
           datesSet={handleDatesSet}
+          dayCellContent={renderDayCellContent}
           eventDurationEditable={true}
           eventResizableFromStart={false}
           eventTimeFormat={{
@@ -689,7 +794,7 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
           event={selectedEvent}
           initialDateRange={selectedDateRange}
           initialMode={selectedEvent ? 'view' : 'edit'}
-          presentation="panel"
+          presentation={isMobile ? 'modal' : 'panel'}
           onClose={() => {
             setIsEventModalOpen(false);
             setSelectedEvent(null);
@@ -705,7 +810,7 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
           categories={categories}
           initialMode={activeTask ? 'view' : 'edit'}
           calendarSelectPrefill={calendarTaskPrefill}
-          presentation="panel"
+          presentation={isMobile ? 'bottom-sheet' : 'panel'}
           onClose={() => {
             setActiveTaskId(null);
             setCalendarTaskPrefill(null);

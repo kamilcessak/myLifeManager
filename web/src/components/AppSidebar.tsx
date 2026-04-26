@@ -69,7 +69,12 @@ export default function AppSidebar({ isCollapsed, onToggleCollapse }: AppSidebar
   };
 
   return (
-    <aside className={cn('app-sidebar', isCollapsed && 'app-sidebar-collapsed')}>
+    <aside
+      className={cn(
+        'app-sidebar hidden md:flex',
+        isCollapsed && 'app-sidebar-collapsed',
+      )}
+    >
       <div
         className={cn(
           'border-b border-[var(--app-border)] p-3',

@@ -1,6 +1,8 @@
 import { ReactNode, useEffect, useState } from 'react';
 import AppHeader from './AppHeader';
 import AppSidebar from './AppSidebar';
+import ChangelogModal from './ChangelogModal';
+import MobileBottomNav from './mobile/MobileBottomNav';
 
 interface LayoutProps {
   children: ReactNode;
@@ -25,8 +27,10 @@ export default function Layout({ children }: LayoutProps) {
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
         />
-        <main className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</main>
+        <main className="app-main-area min-h-0 min-w-0 flex-1 overflow-hidden">{children}</main>
       </div>
+      <MobileBottomNav />
+      <ChangelogModal />
     </div>
   );
 }

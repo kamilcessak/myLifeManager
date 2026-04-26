@@ -11,8 +11,10 @@ import AssigneeFilterToggle from './AssigneeFilterToggle';
 import ProfileSettingsModal from './profile/ProfileSettingsModal';
 import SearchBar from './SearchBar';
 import WorkspaceSwitcher from './layout/WorkspaceSwitcher';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 export default function AppHeader() {
+  const isMobile = useIsMobile();
   const { user, logout } = useAuthStore();
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -42,24 +44,34 @@ export default function AppHeader() {
   return (
     <>
       <header className="app-header">
-        <div className="flex min-w-[220px] items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500">
+        <div className="flex min-w-0 items-center gap-2 md:min-w-[220px] md:gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-500">
             <Calendar className="h-6 w-6 text-white" />
           </div>
-          <div className="min-w-0">
+          <div className="hidden min-w-0 md:block">
             <h1 className="truncate text-lg font-semibold text-[var(--app-text)]">My Life Manager</h1>
             <p className="truncate text-xs text-[var(--app-text-muted)]">Zarządzaj czasem efektywnie</p>
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-1 justify-center px-4">
+        <div className="hidden min-w-0 flex-1 justify-center px-4 md:flex">
           <SearchBar />
         </div>
 
-        <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-          <AssigneeFilterToggle variant="compact" />
-          <WorkspaceSwitcher />
-          <div className="relative" ref={menuRef}>
+        {isMobile ? (
+          <div className="flex shrink-0 md:hidden">
+            <SearchBar variant="headerIcon" />
+          </div>
+        ) : null}
+
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3 md:gap-4">
+          <div className="hidden md:block">
+            <AssigneeFilterToggle variant="compact" />
+          </div>
+          <div className="hidden md:block">
+            <WorkspaceSwitcher />
+          </div>
+          <div className="relative hidden md:block" ref={menuRef}>
             <button
               onClick={() => setIsAccountMenuOpen((prev) => !prev)}
               className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)]"
