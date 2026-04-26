@@ -388,15 +388,21 @@ html.dark .fc-timeGridDay-view .fc-more-link {
 /* Ensure text is visible in time grid (block events) */
 .fc-timegrid-event.fc-event-task .fc-event-time,
 .fc-timegrid-event.fc-event-task .fc-event-title,
+.fc-timegrid-event.fc-event-task .fc-item-time,
+.fc-timegrid-event.fc-event-task .fc-item-title,
 .fc-daygrid-block-event.fc-event-task .fc-event-time,
-.fc-daygrid-block-event.fc-event-task .fc-event-title {
+.fc-daygrid-block-event.fc-event-task .fc-event-title,
+.fc-daygrid-block-event.fc-event-task .fc-item-time,
+.fc-daygrid-block-event.fc-event-task .fc-item-title {
   color: white !important;
   text-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
 
 /* For dot events (Time-based in DayGrid), keep default color */
 .fc-daygrid-dot-event.fc-event-task .fc-event-time,
-.fc-daygrid-dot-event.fc-event-task .fc-event-title {
+.fc-daygrid-dot-event.fc-event-task .fc-event-title,
+.fc-daygrid-dot-event.fc-event-task .fc-item-time,
+.fc-daygrid-dot-event.fc-event-task .fc-item-title {
   color: #1f2937 !important; /* Force dark gray text */
   text-shadow: none !important;
   font-weight: 500;
@@ -422,7 +428,9 @@ html.dark .fc-event-task-active {
 
 /* For completed dot events */
 .fc-daygrid-dot-event.fc-event-task-completed .fc-event-title,
-.fc-daygrid-dot-event.fc-event-task-completed .fc-event-time {
+.fc-daygrid-dot-event.fc-event-task-completed .fc-event-time,
+.fc-daygrid-dot-event.fc-event-task-completed .fc-item-title,
+.fc-daygrid-dot-event.fc-event-task-completed .fc-item-time {
   text-decoration: line-through;
   color: #9ca3af !important;
 }
@@ -430,8 +438,12 @@ html.dark .fc-event-task-active {
 /* For completed block events */
 .fc-timegrid-event.fc-event-task-completed .fc-event-title,
 .fc-timegrid-event.fc-event-task-completed .fc-event-time,
+.fc-timegrid-event.fc-event-task-completed .fc-item-title,
+.fc-timegrid-event.fc-event-task-completed .fc-item-time,
 .fc-daygrid-block-event.fc-event-task-completed .fc-event-title,
-.fc-daygrid-block-event.fc-event-task-completed .fc-event-time {
+.fc-daygrid-block-event.fc-event-task-completed .fc-event-time,
+.fc-daygrid-block-event.fc-event-task-completed .fc-item-title,
+.fc-daygrid-block-event.fc-event-task-completed .fc-item-time {
   text-decoration: line-through;
   color: white !important;
   font-weight: 500;
@@ -445,61 +457,89 @@ html.dark .fc-event-task-active {
 
 .fc-timegrid-event.fc-event-event .fc-event-time,
 .fc-timegrid-event.fc-event-event .fc-event-title,
+.fc-timegrid-event.fc-event-event .fc-item-time,
+.fc-timegrid-event.fc-event-event .fc-item-title,
 .fc-daygrid-block-event.fc-event-event .fc-event-time,
-.fc-daygrid-block-event.fc-event-event .fc-event-title {
+.fc-daygrid-block-event.fc-event-event .fc-event-title,
+.fc-daygrid-block-event.fc-event-event .fc-item-time,
+.fc-daygrid-block-event.fc-event-event .fc-item-title {
   color: white !important;
 }
 
 .fc-daygrid-dot-event.fc-event-event .fc-event-time,
-.fc-daygrid-dot-event.fc-event-event .fc-event-title {
+.fc-daygrid-dot-event.fc-event-event .fc-event-title,
+.fc-daygrid-dot-event.fc-event-event .fc-item-time,
+.fc-daygrid-dot-event.fc-event-event .fc-item-title {
   color: inherit !important;
 }
 
-/* Shared event content with icon and text */
+/* Shared event content — compact tile, start time + title on first row */
+.fc-timegrid-event {
+  container-type: size;
+  container-name: calendar-block;
+}
+
 .fc-item-content {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  width: 100%;
-  min-width: 0;
-}
-
-.fc-item-icon {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  opacity: 0.9;
-}
-
-.fc-item-text {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-
-/* Month + week: time on first row, title below (up to 3 lines, then ellipsis) */
-.fc-dayGridMonth-view .fc-item-content,
-.fc-timeGridWeek-view .fc-item-content {
-  align-items: flex-start;
-}
-
-.fc-dayGridMonth-view .fc-item-text,
-.fc-timeGridWeek-view .fc-item-text {
   flex-direction: column;
   align-items: stretch;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  padding: 2px 6px 3px;
+  line-height: 1.2;
   gap: 2px;
 }
 
-.fc-dayGridMonth-view .fc-item-time,
-.fc-timeGridWeek-view .fc-item-time {
+/* Top row: controls + time range (left) · avatar (right) */
+.fc-item-meta-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
   flex-shrink: 0;
-  white-space: nowrap;
+  padding-bottom: 1px;
+  gap: 4px;
 }
 
-.fc-dayGridMonth-view .fc-item-title,
-.fc-timeGridWeek-view .fc-item-title {
-  white-space: normal;
+.fc-item-meta-left {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.fc-item-type-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.92;
+  line-height: 0;
+}
+
+.fc-item-time {
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fc-item-title {
+  width: 100%;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -508,19 +548,48 @@ html.dark .fc-event-task-active {
   word-break: break-word;
 }
 
-.fc-item-time,
-.fc-item-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.fc-item-assignee {
+  flex-shrink: 0;
+  line-height: 0;
 }
 
-/* Day view keeps single-line time + title in one row */
-.fc-timeGridDay-view .fc-item-title {
-  white-space: nowrap;
-  display: block;
-  -webkit-line-clamp: unset;
-  line-clamp: unset;
+/* Time strip on solid / time-grid backgrounds */
+.fc-timegrid-event.fc-event-task .fc-item-meta-row .fc-item-time,
+.fc-timegrid-event.fc-event-event .fc-item-meta-row .fc-item-time,
+.fc-daygrid-block-event.fc-event-task .fc-item-meta-row .fc-item-time,
+.fc-daygrid-block-event.fc-event-event .fc-item-meta-row .fc-item-time {
+  color: #ffffffd0 !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+}
+
+.fc-daygrid-dot-event.fc-event-task .fc-item-meta-row .fc-item-time,
+.fc-daygrid-dot-event.fc-event-event .fc-item-meta-row .fc-item-time {
+  color: rgba(31, 41, 55, 0.72) !important;
+  text-shadow: none;
+}
+
+html.dark .fc-daygrid-dot-event.fc-event-task .fc-item-meta-row .fc-item-time,
+html.dark .fc-daygrid-dot-event.fc-event-event .fc-item-meta-row .fc-item-time {
+  color: rgba(243, 244, 246, 0.75) !important;
+}
+
+@container calendar-block (max-height: 49px) {
+  .fc-item-title {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+}
+
+@container calendar-block (max-height: 36px) {
+  .fc-item-title {
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+  }
+}
+
+/* Dot / month timed chips: keep same density */
+.fc-daygrid-dot-event .fc-item-content {
+  padding: 2px 4px;
 }
 
 /* ========== NOW INDICATOR (current time line) ========== */

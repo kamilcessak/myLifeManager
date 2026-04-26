@@ -70,30 +70,47 @@ export default function AppSidebar({ isCollapsed, onToggleCollapse }: AppSidebar
 
   return (
     <aside className={cn('app-sidebar', isCollapsed && 'app-sidebar-collapsed')}>
-      <div className={cn('space-y-2 border-b border-[var(--app-border)] p-3', isCollapsed && 'px-2')}>
-        <div className={cn('flex items-center justify-end', isCollapsed && 'justify-center')}>
+      <div
+        className={cn(
+          'border-b border-[var(--app-border)] p-3',
+          isCollapsed ? 'flex flex-col gap-2 px-2' : 'flex flex-row items-center gap-2',
+        )}
+      >
+        {isCollapsed ? (
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
+              aria-label="Pokaż lewy pasek"
+              title="Pokaż lewy pasek"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
-            aria-label={isCollapsed ? 'Pokaż lewy pasek' : 'Schowaj lewy pasek'}
-            title={isCollapsed ? 'Pokaż lewy pasek' : 'Schowaj lewy pasek'}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
+            aria-label="Schowaj lewy pasek"
+            title="Schowaj lewy pasek"
           >
-            {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            <PanelLeftClose className="h-4 w-4" />
           </button>
-        </div>
+        )}
         <button
           type="button"
           onClick={requestCreateTask}
           className={cn(
-            'flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-500 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30',
-            isCollapsed && 'px-0',
+            'flex h-10 min-w-0 items-center justify-center gap-2 rounded-lg bg-blue-500 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30',
+            isCollapsed ? 'w-full px-0' : 'flex-1 px-3',
           )}
           aria-label="Dodaj zadanie"
           title="Dodaj zadanie"
         >
-          <Plus className="h-4 w-4" />
-          {!isCollapsed ? <span>Dodaj zadanie</span> : null}
+          <Plus className="h-4 w-4 shrink-0" />
+          {!isCollapsed ? <span className="truncate">Dodaj zadanie</span> : null}
         </button>
       </div>
 

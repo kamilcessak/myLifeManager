@@ -13,6 +13,7 @@ import {
   subDays,
   startOfDay,
   endOfDay,
+  format,
 } from 'date-fns';
 import { tasksApi, eventsApi } from '../lib/api';
 import { Task, Event, CalendarItem } from '../types';
@@ -457,43 +458,54 @@ export default function CalendarView({ activeCategory }: CalendarViewProps) {
     const assignee = isTask ? taskData?.assignee ?? null : eventData?.assignee ?? null;
 
     const fullTitle = arg.event.title;
+    const start = arg.event.start;
+    const end = arg.event.end;
+    const timeRangeLabel =
+      start && !arg.event.allDay
+        ? end
+          ? `${format(start, 'HH:mm')} - ${format(end, 'HH:mm')}`
+          : (arg.timeText ?? format(start, 'HH:mm'))
+        : null;
 
     return (
       <div className="fc-item-content" title={fullTitle}>
-        {isTask && taskData ? (
-          <button
-            type="button"
-            className="flex-shrink-0 w-4 h-4 rounded border border-white/80 bg-white/20 text-white flex items-center justify-center"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleToggleComplete(taskData.id, taskData.isCompleted);
-            }}
-            aria-label={taskData.isCompleted ? 'Odznacz jako ukończone' : 'Oznacz jako ukończone'}
-          >
-            {taskData.isCompleted ? <CheckSquare className="w-3 h-3" /> : null}
-          </button>
-        ) : null}
-        <span className="fc-item-icon" aria-hidden="true">
-          {isTask ? <CheckSquare className="w-3 h-3" /> : <CalendarCheck className="w-3 h-3" />}
-        </span>
-        <div className="fc-item-text">
-          {arg.timeText ? (
-            <span className="fc-item-time" title={fullTitle}>
-              {arg.timeText}
-            </span>
+        <div className="fc-item-meta-row">
+          <div className="fc-item-meta-left">
+            {isTask && taskData ? (
+              <button
+                type="button"
+                className="fc-item-checkbox flex-shrink-0 h-3.5 w-3.5 rounded border border-white/80 bg-white/20 p-0 text-white flex items-center justify-center"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleToggleComplete(taskData.id, taskData.isCompleted);
+                }}
+                aria-label={taskData.isCompleted ? 'Odznacz jako ukończone' : 'Oznacz jako ukończone'}
+              >
+                {taskData.isCompleted ? <CheckSquare className="h-3 w-3" strokeWidth={2.5} /> : null}
+              </button>
+            ) : null}
+            {!isTask ? (
+              <span className="fc-item-type-icon" aria-hidden="true">
+                <CalendarCheck className="h-3.5 w-3.5" strokeWidth={2} />
+              </span>
+            ) : null}
+            {timeRangeLabel ? (
+              <span className="fc-item-time">{timeRangeLabel}</span>
+            ) : null}
+          </div>
+          {assignee ? (
+            <div className="fc-item-assignee">
+              <AssigneeAvatar
+                assignee={assignee}
+                size="xs"
+                className="h-3.5 w-3.5 text-[9px]"
+                showTitle
+              />
+            </div>
           ) : null}
-          <span className="fc-item-title" title={fullTitle}>
-            {arg.event.title}
-          </span>
         </div>
-        {assignee ? (
-          <AssigneeAvatar
-            assignee={assignee}
-            size="xs"
-            className="ml-auto shrink-0"
-          />
-        ) : null}
+        <span className="fc-item-title">{arg.event.title}</span>
       </div>
     );
   }, [handleToggleComplete]);
