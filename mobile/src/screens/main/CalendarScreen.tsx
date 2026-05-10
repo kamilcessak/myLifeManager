@@ -1,7 +1,9 @@
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { Task } from '@mlm/shared';
 import { addHours, endOfDay, endOfWeek, format, startOfDay, startOfWeek } from 'date-fns';
 import { pl } from 'date-fns/locale';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import dayjs from 'dayjs';
 import 'dayjs/locale/pl';
 import { ScheduleSlotModal } from '../../components/calendar/ScheduleSlotModal';
+import { AssigneeFilterToggle } from '../../components/AssigneeFilterToggle';
 import {
   buildCalendarEventsFromTasksAndEvents,
   type MlmCalendarEvent,
@@ -26,6 +29,8 @@ import { getEventStableId, getTaskStableId } from '../../lib/calendarEntityIds';
 import { useCalendarRangeQueries } from '../../hooks/useCalendarDataQueries';
 import { useInboxTasks } from '../../hooks/useInboxTasks';
 import { useScheduleTaskMutation } from '../../hooks/useScheduleTaskMutation';
+import type { AppStackParamList } from '../../navigation/types';
+import { useAssigneeFilterStore } from '../../store/assigneeFilterStore';
 import { useWorkspaceStore } from '../../store/workspaceStore';
 
 dayjs.locale('pl');
@@ -40,7 +45,11 @@ function initialFetchRange(): { startIso: string; endIso: string } {
 }
 
 export function CalendarScreen() {
+  const tabNavigation = useNavigation();
+  const stackNavigation =
+    tabNavigation.getParent<NativeStackNavigationProp<AppStackParamList>>();
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const onlyMine = useAssigneeFilterStore((s) => s.onlyMine);
   const [fetchRange, setFetchRange] = useState(initialFetchRange);
   const [calHeight, setCalHeight] = useState(0);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
@@ -50,6 +59,19 @@ export function CalendarScreen() {
     useCalendarRangeQueries(activeWorkspaceId, fetchRange.startIso, fetchRange.endIso);
   const inboxQuery = useInboxTasks();
   const scheduleMutation = useScheduleTaskMutation();
+
+  useLayoutEffect(() => {
+    tabNavigation.setOptions({
+      headerLeft:
+        activeWorkspaceId !== null
+          ? () => (
+              <View style={styles.headerLeft}>
+                <AssigneeFilterToggle />
+              </View>
+            )
+          : undefined,
+    });
+  }, [tabNavigation, activeWorkspaceId, onlyMine]);
 
   const calendarEvents = useMemo(
     () => buildCalendarEventsFromTasksAndEvents(tasks, events),
@@ -68,23 +90,22 @@ export function CalendarScreen() {
     setScheduleModalOpen(true);
   }, []);
 
-  const onPressEvent = useCallback((ev: MlmCalendarEvent) => {
-    if (ev.itemKind === 'task' && ev.sourceTask) {
-      const stable = getTaskStableId(ev.sourceTask);
-      const lines = ev.sourceTask.isRecurringInstance
-        ? `Instancja: ${ev.sourceTask.id}\nID bazowe (szczegóły / historia): ${stable}`
-        : `ID: ${stable}`;
-      Alert.alert('Zadanie', `${ev.sourceTask.title}\n\n${lines}`);
-      return;
-    }
-    if (ev.itemKind === 'event' && ev.sourceEvent) {
-      const stable = getEventStableId(ev.sourceEvent);
-      const lines = ev.sourceEvent.isRecurringInstance
-        ? `Instancja: ${ev.sourceEvent.id}\nID bazowe (szczegóły): ${stable}`
-        : `ID: ${stable}`;
-      Alert.alert('Wydarzenie', `${ev.sourceEvent.title}\n\n${lines}`);
-    }
-  }, []);
+  const onPressEvent = useCallback(
+    (ev: MlmCalendarEvent) => {
+      if (ev.itemKind === 'task' && ev.sourceTask) {
+        stackNavigation?.navigate('TaskDetail', { task: ev.sourceTask });
+        return;
+      }
+      if (ev.itemKind === 'event' && ev.sourceEvent) {
+        const stable = getEventStableId(ev.sourceEvent);
+        const lines = ev.sourceEvent.isRecurringInstance
+          ? `Instancja: ${ev.sourceEvent.id}\nID bazowe (szczegóły): ${stable}`
+          : `ID: ${stable}`;
+        Alert.alert('Wydarzenie', `${ev.sourceEvent.title}\n\n${lines}`);
+      }
+    },
+    [stackNavigation],
+  );
 
   const renderEvent = useCallback(
     (event: MlmCalendarEvent, touchable: CalendarTouchableOpacityProps) => {
@@ -225,6 +246,10 @@ export function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   safe: {
     flex: 1,
     backgroundColor: '#F3F4F6',

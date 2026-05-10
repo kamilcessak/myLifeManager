@@ -88,6 +88,30 @@ export interface Task {
 
 export type TaskPriority = 1 | 2 | 3 | 4;
 
+// ==================== TASK ACTIVITY LOG ====================
+export type ActivityLogAction =
+  | 'CREATED'
+  | 'UPDATED_STATUS'
+  | 'CHANGED_ASSIGNEE'
+  | 'CHANGED_DEADLINE';
+
+export interface ActivityLogUser {
+  id: string;
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+export interface ActivityLogEntry {
+  id: string;
+  taskId: string;
+  userId: string;
+  action: ActivityLogAction;
+  oldValue: string | null;
+  newValue: string | null;
+  createdAt: Date | string;
+  user: ActivityLogUser;
+}
+
 // ==================== EVENT ====================
 export interface Event {
   id: string;

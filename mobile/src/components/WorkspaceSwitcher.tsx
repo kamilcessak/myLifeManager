@@ -1,3 +1,5 @@
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,9 +15,13 @@ import {
   TEAM_WORKSPACE_FALLBACK_LABEL,
 } from '@mlm/shared';
 import { useTeams } from '../hooks/useTeams';
+import type { AppStackParamList } from '../navigation/types';
 import { useWorkspaceStore } from '../store/workspaceStore';
 
 export function WorkspaceSwitcher() {
+  const tabNavigation = useNavigation();
+  const stackNavigation =
+    tabNavigation.getParent<NativeStackNavigationProp<AppStackParamList>>();
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
   const { data: teams, isLoading, isError, refetch, isFetching } = useTeams();
@@ -100,6 +106,21 @@ export function WorkspaceSwitcher() {
                 ))}
               </ScrollView>
             )}
+            {activeWorkspaceId !== null ? (
+              <Pressable
+                style={styles.manageTeam}
+                onPress={() => {
+                  const team = teams?.find((t) => t.id === activeWorkspaceId);
+                  setOpen(false);
+                  stackNavigation?.navigate('TeamManager', {
+                    teamId: activeWorkspaceId,
+                    teamName: team?.name ?? TEAM_WORKSPACE_FALLBACK_LABEL,
+                  });
+                }}
+              >
+                <Text style={styles.manageTeamText}>Zarządzaj zespołem</Text>
+              </Pressable>
+            ) : null}
             <Pressable style={styles.closeFooter} onPress={() => setOpen(false)}>
               <Text style={styles.closeFooterText}>Zamknij</Text>
             </Pressable>
@@ -209,6 +230,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#2563eb',
     fontWeight: '700',
+  },
+  manageTeam: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e5e7eb',
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+  },
+  manageTeamText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0f172a',
   },
   closeFooter: {
     borderTopWidth: StyleSheet.hairlineWidth,

@@ -1,14 +1,17 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useEffect } from 'react';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 import { useAuthStore } from '../store/authStore';
+import { AppStack } from './AppStack';
 import { AuthStack } from './AuthStack';
-import { MainTabs } from './MainTabs';
 
 export function RootNavigator() {
   const isLoading = useAuthStore((s) => s.isLoading);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const checkAuth = useAuthStore((s) => s.checkAuth);
+
+  usePushNotifications(isAuthenticated && !isLoading);
 
   useEffect(() => {
     void checkAuth();
@@ -24,7 +27,7 @@ export function RootNavigator() {
 
   return (
     <NavigationContainer>
-      {isAuthenticated ? <MainTabs /> : <AuthStack />}
+      {isAuthenticated ? <AppStack /> : <AuthStack />}
     </NavigationContainer>
   );
 }

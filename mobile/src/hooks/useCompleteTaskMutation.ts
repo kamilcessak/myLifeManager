@@ -1,8 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Task } from '@mlm/shared';
 import { apiClient } from '../lib/apiClient';
-import { tasksInboxQueryKey } from '../lib/queryKeys';
-import { useWorkspaceStore } from '../store/workspaceStore';
+import { resolveInboxQueryKey } from '../lib/workspaceTaskQueries';
 
 interface PatchTaskResponse {
   status: string;
@@ -20,8 +19,7 @@ export function useCompleteTaskMutation() {
       return data.data.task;
     },
     onMutate: async (taskId) => {
-      const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId;
-      const queryKey = tasksInboxQueryKey(activeWorkspaceId);
+      const queryKey = resolveInboxQueryKey();
 
       await queryClient.cancelQueries({ queryKey });
 
@@ -44,8 +42,7 @@ export function useCompleteTaskMutation() {
       }
     },
     onSuccess: (serverTask, taskId) => {
-      const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId;
-      const queryKey = tasksInboxQueryKey(activeWorkspaceId);
+      const queryKey = resolveInboxQueryKey();
       queryClient.setQueryData<Task[]>(queryKey, (old) =>
         old?.map((t) => (t.id === taskId ? { ...t, ...serverTask } : t)),
       );

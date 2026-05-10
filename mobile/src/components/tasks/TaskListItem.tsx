@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -15,9 +15,10 @@ const MAX_DRAG = 88;
 export type TaskListItemProps = {
   task: Task;
   onSwipeComplete: (taskId: string) => void;
+  onPress?: (task: Task) => void;
 };
 
-function TaskListItemInner({ task, onSwipeComplete }: TaskListItemProps) {
+function TaskListItemInner({ task, onSwipeComplete, onPress }: TaskListItemProps) {
   const translateX = useSharedValue(0);
 
   const commitComplete = useCallback(() => {
@@ -65,7 +66,11 @@ function TaskListItemInner({ task, onSwipeComplete }: TaskListItemProps) {
             { borderLeftColor: priorityColor },
           ]}
         >
-          <View style={styles.rowMain}>
+          <Pressable
+            style={styles.rowMain}
+            onPress={onPress ? () => onPress(task) : undefined}
+            disabled={!onPress}
+          >
             <Text
               style={[styles.title, task.isCompleted && styles.titleCompleted]}
               numberOfLines={2}
@@ -79,7 +84,7 @@ function TaskListItemInner({ task, onSwipeComplete }: TaskListItemProps) {
                 <Text style={styles.categoryText}> · {task.category.name}</Text>
               ) : null}
             </View>
-          </View>
+          </Pressable>
         </Animated.View>
       </GestureDetector>
     </View>

@@ -1,12 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Task } from '@mlm/shared';
 import { apiClient } from '../lib/apiClient';
-import {
-  tasksInboxQueryKey,
-  tasksScheduledQueryKey,
-  type WorkspaceId,
-} from '../lib/queryKeys';
-import { useWorkspaceStore } from '../store/workspaceStore';
+import { resolveInboxQueryKey, resolveScheduledQueryKey } from '../lib/workspaceTaskQueries';
 
 interface ScheduleResponse {
   status: string;
@@ -33,10 +28,8 @@ export function useScheduleTaskMutation() {
       return data.data.task;
     },
     onMutate: async (variables) => {
-      const activeWorkspaceId: WorkspaceId = useWorkspaceStore.getState().activeWorkspaceId;
-      const inboxKey = tasksInboxQueryKey(activeWorkspaceId);
-      const scheduledKey = tasksScheduledQueryKey(
-        activeWorkspaceId,
+      const inboxKey = resolveInboxQueryKey();
+      const scheduledKey = resolveScheduledQueryKey(
         variables.range.startIso,
         variables.range.endIso,
       );
@@ -88,10 +81,8 @@ export function useScheduleTaskMutation() {
       }
     },
     onSuccess: (serverTask, variables) => {
-      const activeWorkspaceId: WorkspaceId = useWorkspaceStore.getState().activeWorkspaceId;
-      const inboxKey = tasksInboxQueryKey(activeWorkspaceId);
-      const scheduledKey = tasksScheduledQueryKey(
-        activeWorkspaceId,
+      const inboxKey = resolveInboxQueryKey();
+      const scheduledKey = resolveScheduledQueryKey(
         variables.range.startIso,
         variables.range.endIso,
       );

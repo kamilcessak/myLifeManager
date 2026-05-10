@@ -1,4 +1,6 @@
-import { useCallback, useMemo } from 'react';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useCallback, useLayoutEffect, useMemo } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -9,17 +11,47 @@ import {
   View,
 } from 'react-native';
 import type { Task } from '@mlm/shared';
+import { AssigneeFilterToggle } from '../../components/AssigneeFilterToggle';
 import { TaskListItem } from '../../components/tasks/TaskListItem';
 import { useCompleteTaskMutation } from '../../hooks/useCompleteTaskMutation';
 import { useInboxTasks } from '../../hooks/useInboxTasks';
 import { getApiErrorMessage } from '../../lib/apiErrors';
+import type { AppStackParamList } from '../../navigation/types';
+import { useAssigneeFilterStore } from '../../store/assigneeFilterStore';
+import { useWorkspaceStore } from '../../store/workspaceStore';
 
 /** Eksport typu dla zapytań inbox (taskQuerySchema / teamId). */
 export type { TaskQuery } from '@mlm/shared';
 
 export function InboxScreen() {
+  const tabNavigation = useNavigation();
+  const stackNavigation =
+    tabNavigation.getParent<NativeStackNavigationProp<AppStackParamList>>();
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const onlyMine = useAssigneeFilterStore((s) => s.onlyMine);
+
   const { data: tasks, isLoading, isError, error, refetch, isFetching } = useInboxTasks();
   const completeMutation = useCompleteTaskMutation();
+
+  useLayoutEffect(() => {
+    tabNavigation.setOptions({
+      headerLeft:
+        activeWorkspaceId !== null
+          ? () => (
+              <View style={styles.headerLeft}>
+                <AssigneeFilterToggle />
+              </View>
+            )
+          : undefined,
+    });
+  }, [tabNavigation, activeWorkspaceId, onlyMine]);
+
+  const onOpenTask = useCallback(
+    (task: Task) => {
+      stackNavigation?.navigate('TaskDetail', { task });
+    },
+    [stackNavigation],
+  );
 
   const onSwipeComplete = useCallback(
     (taskId: string) => {
@@ -29,8 +61,14 @@ export function InboxScreen() {
   );
 
   const renderItem: ListRenderItem<Task> = useCallback(
-    ({ item }) => <TaskListItem task={item} onSwipeComplete={onSwipeComplete} />,
-    [onSwipeComplete],
+    ({ item }) => (
+      <TaskListItem
+        task={item}
+        onSwipeComplete={onSwipeComplete}
+        onPress={onOpenTask}
+      />
+    ),
+    [onOpenTask, onSwipeComplete],
   );
 
   const keyExtractor = useCallback((item: Task) => item.id, []);
@@ -76,6 +114,10 @@ export function InboxScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   screen: {
     flex: 1,
     backgroundColor: '#f9fafb',

@@ -1,3 +1,5 @@
+import { useNavigation } from '@react-navigation/native';
+import { useLayoutEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { updateProfileSchema } from '@mlm/shared';
 import { useAuthStore } from '../../store/authStore';
@@ -6,8 +8,13 @@ import { useAuthStore } from '../../store/authStore';
 export const profileUpdateSchema = updateProfileSchema;
 
 export function ProfileScreen() {
+  const navigation = useNavigation();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerLeft: undefined });
+  }, [navigation]);
 
   return (
     <View style={styles.container}>

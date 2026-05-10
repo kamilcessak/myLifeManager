@@ -2,6 +2,9 @@ import { useQueries } from '@tanstack/react-query';
 import type { Event, Task } from '@mlm/shared';
 import { apiClient } from '../lib/apiClient';
 import { eventsRangeQueryKey, tasksScheduledQueryKey, type WorkspaceId } from '../lib/queryKeys';
+import { assigneeIdApiParam } from '../lib/workspaceTaskQueries';
+import { useAssigneeFilterStore } from '../store/assigneeFilterStore';
+import { useAuthStore } from '../store/authStore';
 
 interface TasksBody {
   status: string;
@@ -29,30 +32,49 @@ export function useCalendarRangeQueries(
   startDateIso: string,
   endDateIso: string,
 ): CalendarRangeQueriesResult {
+  const onlyMine = useAssigneeFilterStore((s) => s.onlyMine);
+  const userId = useAuthStore((s) => s.user?.id ?? null);
+  const assigneeKey =
+    activeWorkspaceId !== null && onlyMine && userId ? userId : null;
+
   const results = useQueries({
     queries: [
       {
-        queryKey: tasksScheduledQueryKey(activeWorkspaceId, startDateIso, endDateIso),
+        queryKey: tasksScheduledQueryKey(
+          activeWorkspaceId,
+          startDateIso,
+          endDateIso,
+          assigneeKey,
+        ),
         queryFn: async (): Promise<Task[]> => {
+          const assigneeId = assigneeIdApiParam(activeWorkspaceId);
           const { data } = await apiClient.get<TasksBody>('/tasks', {
             params: {
               scheduled: 'true',
               startDate: startDateIso,
               endDate: endDateIso,
               ...(activeWorkspaceId ? { teamId: activeWorkspaceId } : {}),
+              ...(assigneeId ? { assigneeId } : {}),
             },
           });
           return data.data.tasks;
         },
       },
       {
-        queryKey: eventsRangeQueryKey(activeWorkspaceId, startDateIso, endDateIso),
+        queryKey: eventsRangeQueryKey(
+          activeWorkspaceId,
+          startDateIso,
+          endDateIso,
+          assigneeKey,
+        ),
         queryFn: async (): Promise<Event[]> => {
+          const assigneeId = assigneeIdApiParam(activeWorkspaceId);
           const { data } = await apiClient.get<EventsBody>('/events', {
             params: {
               startDate: startDateIso,
               endDate: endDateIso,
               ...(activeWorkspaceId ? { teamId: activeWorkspaceId } : {}),
+              ...(assigneeId ? { assigneeId } : {}),
             },
           });
           return data.data.events;
