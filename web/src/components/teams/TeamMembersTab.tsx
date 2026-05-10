@@ -9,7 +9,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import type { TeamRole } from 'shared';
+import type { TeamRole } from '@mlm/shared';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '../../store/authStore';
 import {

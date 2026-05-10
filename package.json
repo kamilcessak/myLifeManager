@@ -2,12 +2,17 @@
   "name": "my-life-manager",
   "version": "1.0.0",
   "private": true,
-  "workspaces": [
-    "api",
-    "web",
-    "shared",
-    "mobile"
-  ],
+  "workspaces": {
+    "packages": [
+      "api",
+      "web",
+      "shared",
+      "mobile"
+    ],
+    "nohoist": [
+      "mobile/**"
+    ]
+  },
   "scripts": {
     "api:dev": "yarn workspace api dev",
     "api:build": "yarn workspace api build",

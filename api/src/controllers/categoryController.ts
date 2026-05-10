@@ -6,7 +6,7 @@ import {
   createCategorySchema,
   getCategoriesQuerySchema,
   updateCategorySchema,
-} from 'shared';
+} from '@mlm/shared';
 
 async function findCategoryForUser(categoryId: string, userId: string) {
   const category = await prisma.category.findUnique({ where: { id: categoryId } });

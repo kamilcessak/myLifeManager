@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, KeyRound, Loader2, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { changePasswordSchema, type ChangePasswordInput } from 'shared';
+import { changePasswordSchema, type ChangePasswordInput } from '@mlm/shared';
 import axios from 'axios';
 import { Button } from '@/components/ui/button';
 import { getApiErrorMessage } from '@/lib/apiErrors';

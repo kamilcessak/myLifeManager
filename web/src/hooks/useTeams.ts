@@ -5,7 +5,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import type { Team, TeamInvitation, TeamRole } from 'shared';
+import type { Team, TeamInvitation, TeamRole } from '@mlm/shared';
 import { api, teamsApi, type TeamMemberApiRow } from '../lib/api';
 
 /** Team list item returned by GET /api/teams (membership metadata from API). */

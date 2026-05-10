@@ -6,7 +6,7 @@ import { prisma } from '../config/database.js';
 import { ApiError } from '../middleware/errorHandler.js';
 import { verifyTeamAccess } from '../utils/teamAccess.js';
 import { ensureCategoryMatchesWorkspace } from '../utils/categoryWorkspace.js';
-import { taskQuerySchema } from 'shared';
+import { taskQuerySchema } from '@mlm/shared';
 
 // ==================== ACTIVITY LOG HELPERS ====================
 

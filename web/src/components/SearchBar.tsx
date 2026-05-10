@@ -13,7 +13,7 @@ import {
   PERSONAL_WORKSPACE_LABEL,
   TEAM_WORKSPACE_FALLBACK_LABEL,
   type SearchResultItem,
-} from 'shared';
+} from '@mlm/shared';
 import { eventsApi, searchApi, tasksApi } from '../lib/api';
 import { useCategories } from '../hooks/useCategories';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';

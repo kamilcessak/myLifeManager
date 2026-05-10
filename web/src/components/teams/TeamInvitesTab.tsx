@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check, Copy, Loader2, Mail, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
-import type { TeamInvitation } from 'shared';
+import type { TeamInvitation } from '@mlm/shared';
 import { Button } from '@/components/ui/button';
 import { useInviteMembersMutation } from '../../hooks/useTeams';
 import { getApiErrorMessage } from '@/lib/apiErrors';

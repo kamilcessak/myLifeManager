@@ -4,7 +4,7 @@ import type {
   Team,
   TeamInvitation,
   TeamRole,
-} from "shared";
+} from "@mlm/shared";
 import { type Attachment, type ActivityLogEntry } from "../types";
 import { clearClientSession } from "./clearClientSession";
 

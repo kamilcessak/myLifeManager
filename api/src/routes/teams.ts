@@ -5,7 +5,7 @@ import {
   joinTeamSchema,
   updateMemberRoleSchema,
   updateTeamSchema,
-} from 'shared';
+} from '@mlm/shared';
 import * as teamController from '../controllers/teamController.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validateRequest } from '../middleware/validateRequest.js';

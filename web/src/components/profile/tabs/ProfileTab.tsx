@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, Mail, User } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { updateProfileSchema } from 'shared';
+import { updateProfileSchema } from '@mlm/shared';
 import { useAuthStore } from '../../../store/authStore';
 import { useUpdateProfile } from '../../../hooks/useUpdateProfile';
 import { Button } from '@/components/ui/button';

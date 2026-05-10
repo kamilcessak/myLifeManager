@@ -6,7 +6,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { z } from 'zod';
-import { changePasswordSchema } from 'shared';
+import { changePasswordSchema } from '@mlm/shared';
 import { prisma } from '../config/database.js';
 import { requireAuth, AuthenticatedUser } from '../middleware/auth.js';
 import { ApiError } from '../middleware/errorHandler.js';
