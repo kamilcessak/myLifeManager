@@ -1,33 +1,118 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  ListRenderItem,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import type { Task } from '@mlm/shared';
+import { TaskListItem } from '../../components/tasks/TaskListItem';
+import { useCompleteTaskMutation } from '../../hooks/useCompleteTaskMutation';
+import { useInboxTasks } from '../../hooks/useInboxTasks';
+import { getApiErrorMessage } from '../../lib/apiErrors';
 
-/** Eksport typu na Phase 2 (GET /api/tasks/inbox + taskQuerySchema). */
+/** Eksport typu dla zapytań inbox (taskQuerySchema / teamId). */
 export type { TaskQuery } from '@mlm/shared';
 
 export function InboxScreen() {
+  const { data: tasks, isLoading, isError, error, refetch, isFetching } = useInboxTasks();
+  const completeMutation = useCompleteTaskMutation();
+
+  const onSwipeComplete = useCallback(
+    (taskId: string) => {
+      completeMutation.mutate(taskId);
+    },
+    [completeMutation],
+  );
+
+  const renderItem: ListRenderItem<Task> = useCallback(
+    ({ item }) => <TaskListItem task={item} onSwipeComplete={onSwipeComplete} />,
+    [onSwipeComplete],
+  );
+
+  const keyExtractor = useCallback((item: Task) => item.id, []);
+
+  const listEmpty = useMemo(() => {
+    if (isLoading) {
+      return (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" />
+        </View>
+      );
+    }
+    if (isError) {
+      return (
+        <View style={styles.centered}>
+          <Text style={styles.errorTitle}>Nie udało się wczytać skrzynki</Text>
+          <Text style={styles.errorBody}>{getApiErrorMessage(error)}</Text>
+        </View>
+      );
+    }
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.emptyTitle}>Brak zadań w skrzynce</Text>
+        <Text style={styles.emptyBody}>Nowe zadania pojawią się tutaj.</Text>
+      </View>
+    );
+  }, [isLoading, isError, error]);
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Inbox</Text>
-      <Text style={styles.body}>
-        {/* TODO(Phase 2): lista zadań z /api/tasks/inbox + parametry z taskQuerySchema */}
-        Tutaj pojawi się skrzynka zadań (time-blocking).
-      </Text>
+    <View style={styles.screen}>
+      <FlatList
+        data={tasks ?? []}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        ListEmptyComponent={listEmpty}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={isFetching && !isLoading} onRefresh={() => void refetch()} />
+        }
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    padding: 20,
+    backgroundColor: '#f9fafb',
   },
-  title: {
-    fontSize: 22,
+  listContent: {
+    flexGrow: 1,
+    paddingTop: 12,
+    paddingBottom: 24,
+  },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 48,
+  },
+  errorTitle: {
+    fontSize: 17,
     fontWeight: '700',
+    color: '#b91c1c',
     marginBottom: 8,
+    textAlign: 'center',
   },
-  body: {
-    fontSize: 16,
-    color: '#444',
-    lineHeight: 22,
+  errorBody: {
+    fontSize: 15,
+    color: '#4b5563',
+    textAlign: 'center',
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 6,
+  },
+  emptyBody: {
+    fontSize: 15,
+    color: '#6b7280',
+    textAlign: 'center',
   },
 });

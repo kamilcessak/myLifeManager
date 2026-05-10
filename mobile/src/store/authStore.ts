@@ -3,6 +3,7 @@ import type { User } from '@mlm/shared';
 import { apiClient } from '../lib/apiClient';
 import { clearMobileClientSession } from '../lib/clearMobileClientSession';
 import { clearStoredToken, getStoredToken, setStoredToken } from '../lib/tokenStorage';
+import { useWorkspaceStore } from './workspaceStore';
 
 type AuthUser = Pick<User, 'id' | 'email' | 'name' | 'avatarUrl' | 'createdAt'>;
 
@@ -43,11 +44,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: true,
 
   logoutLocal: () => {
+    useWorkspaceStore.getState().resetWorkspace();
     set({ user: null, token: null, isAuthenticated: false });
   },
 
   login: async (email, password) => {
-    // TODO(Phase 2): bogatsza obsługa błędów (toast, kody 409/422), odświeżanie tokenów
     const { data } = await apiClient.post<AuthSuccessPayload>('/auth/login', { email, password });
     const { user, token } = data.data;
 
@@ -57,7 +58,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   register: async (email, password, name) => {
-    // TODO(Phase 2): obsługa konfliktów email / walidacji serwera
     const { data } = await apiClient.post<AuthSuccessPayload>('/auth/register', {
       email,
       password,
@@ -91,7 +91,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     try {
-      // TODO(Phase 2): dedykowany hook react-query dla /auth/me + cache profilu
       const { data } = await apiClient.get<MeSuccessPayload>('/auth/me');
       set({
         user: data.data.user,

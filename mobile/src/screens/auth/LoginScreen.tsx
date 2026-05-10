@@ -1,70 +1,75 @@
+import { zodResolver } from '@hookform/resolvers/zod';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useState } from 'react';
-import {
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { loginSchema } from '@mlm/shared';
+import { useForm, Controller } from 'react-hook-form';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { loginSchema, type LoginInput } from '@mlm/shared';
 import type { AuthStackParamList } from '../../navigation/AuthStack';
+import { getApiErrorMessage } from '../../lib/apiErrors';
 import { useAuthStore } from '../../store/authStore';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 export function LoginScreen({ navigation }: Props) {
   const login = useAuthStore((s) => s.login);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const {
+    control,
+    handleSubmit,
+    formState: { isSubmitting, errors },
+  } = useForm<LoginInput>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' },
+  });
 
-  const onSubmit = async () => {
-    const parsed = loginSchema.safeParse({ email, password });
-    if (!parsed.success) {
-      const msg = parsed.error.flatten().fieldErrors;
-      Alert.alert('Walidacja', Object.values(msg).flat().filter(Boolean).join('\n'));
-      return;
-    }
-
-    setSubmitting(true);
+  const onValid = async (data: LoginInput) => {
     try {
-      await login(parsed.data.email, parsed.data.password);
-    } catch {
-      // TODO(Phase 2): mapowanie komunikatów z API (401, 422, sieć)
-      Alert.alert('Logowanie', 'Nie udało się zalogować. Sprawdź dane lub połączenie z API.');
-    } finally {
-      setSubmitting(false);
+      await login(data.email, data.password);
+    } catch (e) {
+      Alert.alert('Logowanie', getApiErrorMessage(e));
     }
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.label}>E-mail</Text>
-      <TextInput
-        style={styles.input}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-        placeholder="you@example.com"
+      <Controller
+        control={control}
+        name="email"
+        render={({ field: { onChange, onBlur, value } }) => (
+          <TextInput
+            style={styles.input}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            value={value}
+            onBlur={onBlur}
+            onChangeText={onChange}
+            placeholder="you@example.com"
+          />
+        )}
       />
+      {errors.email ? <Text style={styles.fieldError}>{errors.email.message}</Text> : null}
       <Text style={styles.label}>Hasło</Text>
-      <TextInput
-        style={styles.input}
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        placeholder="••••••••"
+      <Controller
+        control={control}
+        name="password"
+        render={({ field: { onChange, onBlur, value } }) => (
+          <TextInput
+            style={styles.input}
+            secureTextEntry
+            value={value}
+            onBlur={onBlur}
+            onChangeText={onChange}
+            placeholder="••••••••"
+          />
+        )}
       />
+      {errors.password ? <Text style={styles.fieldError}>{errors.password.message}</Text> : null}
       <Pressable
-        style={[styles.button, submitting && styles.buttonDisabled]}
-        onPress={() => void onSubmit()}
-        disabled={submitting}
+        style={[styles.button, isSubmitting && styles.buttonDisabled]}
+        onPress={() => void handleSubmit(onValid)()}
+        disabled={isSubmitting}
       >
-        <Text style={styles.buttonText}>{submitting ? 'Logowanie…' : 'Zaloguj'}</Text>
+        <Text style={styles.buttonText}>{isSubmitting ? 'Logowanie…' : 'Zaloguj'}</Text>
       </Pressable>
       <Pressable style={styles.link} onPress={() => navigation.navigate('Register')}>
         <Text style={styles.linkText}>Nie masz konta? Zarejestruj się</Text>
@@ -115,5 +120,10 @@ const styles = StyleSheet.create({
   linkText: {
     color: '#2563eb',
     fontSize: 15,
+  },
+  fieldError: {
+    color: '#b91c1c',
+    fontSize: 13,
+    marginTop: 2,
   },
 });

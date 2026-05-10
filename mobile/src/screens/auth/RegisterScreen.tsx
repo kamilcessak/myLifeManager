@@ -1,77 +1,93 @@
+import { zodResolver } from '@hookform/resolvers/zod';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useState } from 'react';
-import {
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { registerSchema } from '@mlm/shared';
+import { useForm, Controller } from 'react-hook-form';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { z } from 'zod';
 import type { AuthStackParamList } from '../../navigation/AuthStack';
+import { registerFormSchema } from '../../lib/authFormSchemas';
+import { getApiErrorMessage } from '../../lib/apiErrors';
 import { useAuthStore } from '../../store/authStore';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
 
+type RegisterFormValues = {
+  email: string;
+  password: string;
+  name: string;
+};
+
+type RegisterSubmitValues = z.infer<typeof registerFormSchema>;
+
 export function RegisterScreen({ navigation }: Props) {
   const register = useAuthStore((s) => s.register);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const {
+    control,
+    handleSubmit,
+    formState: { isSubmitting, errors },
+  } = useForm<RegisterFormValues, unknown, RegisterSubmitValues>({
+    resolver: zodResolver(registerFormSchema),
+    defaultValues: { email: '', password: '', name: '' },
+  });
 
-  const onSubmit = async () => {
-    const parsed = registerSchema.safeParse({
-      email,
-      password,
-      name: name.trim() === '' ? undefined : name.trim(),
-    });
-    if (!parsed.success) {
-      const msg = parsed.error.flatten().fieldErrors;
-      Alert.alert('Walidacja', Object.values(msg).flat().filter(Boolean).join('\n'));
-      return;
-    }
-
-    setSubmitting(true);
+  const onValid = async (data: RegisterSubmitValues) => {
     try {
-      await register(parsed.data.email, parsed.data.password, parsed.data.name);
-    } catch {
-      // TODO(Phase 2): obsługa 409 (email zajęty) i innych kodów z /api/auth/register
-      Alert.alert('Rejestracja', 'Nie udało się utworzyć konta.');
-    } finally {
-      setSubmitting(false);
+      await register(data.email, data.password, data.name);
+    } catch (e) {
+      Alert.alert('Rejestracja', getApiErrorMessage(e));
     }
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.label}>Imię (opcjonalnie)</Text>
-      <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Jan" />
+      <Controller
+        control={control}
+        name="name"
+        render={({ field: { onChange, onBlur, value } }) => (
+          <TextInput style={styles.input} value={value} onBlur={onBlur} onChangeText={onChange} placeholder="Jan" />
+        )}
+      />
+      {errors.name ? <Text style={styles.fieldError}>{errors.name.message}</Text> : null}
       <Text style={styles.label}>E-mail</Text>
-      <TextInput
-        style={styles.input}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-        placeholder="you@example.com"
+      <Controller
+        control={control}
+        name="email"
+        render={({ field: { onChange, onBlur, value } }) => (
+          <TextInput
+            style={styles.input}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            value={value}
+            onBlur={onBlur}
+            onChangeText={onChange}
+            placeholder="you@example.com"
+          />
+        )}
       />
+      {errors.email ? <Text style={styles.fieldError}>{errors.email.message}</Text> : null}
       <Text style={styles.label}>Hasło</Text>
-      <TextInput
-        style={styles.input}
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        placeholder="min. 6 znaków"
+      <Controller
+        control={control}
+        name="password"
+        render={({ field: { onChange, onBlur, value } }) => (
+          <TextInput
+            style={styles.input}
+            secureTextEntry
+            value={value}
+            onBlur={onBlur}
+            onChangeText={onChange}
+            placeholder="min. 6 znaków"
+          />
+        )}
       />
+      {errors.password ? <Text style={styles.fieldError}>{errors.password.message}</Text> : null}
       <Pressable
-        style={[styles.button, submitting && styles.buttonDisabled]}
-        onPress={() => void onSubmit()}
-        disabled={submitting}
+        style={[styles.button, isSubmitting && styles.buttonDisabled]}
+        onPress={() => void handleSubmit(onValid)()}
+        disabled={isSubmitting}
       >
-        <Text style={styles.buttonText}>{submitting ? 'Tworzenie…' : 'Utwórz konto'}</Text>
+        <Text style={styles.buttonText}>{isSubmitting ? 'Tworzenie…' : 'Utwórz konto'}</Text>
       </Pressable>
       <Pressable style={styles.link} onPress={() => navigation.navigate('Login')}>
         <Text style={styles.linkText}>Masz konto? Zaloguj się</Text>
@@ -122,5 +138,10 @@ const styles = StyleSheet.create({
   linkText: {
     color: '#2563eb',
     fontSize: 15,
+  },
+  fieldError: {
+    color: '#b91c1c',
+    fontSize: 13,
+    marginTop: 2,
   },
 });
