@@ -81,6 +81,9 @@ export interface Task {
   assignee?: Pick<User, 'id' | 'name' | 'avatarUrl' | 'email'> | null;
   createdAt: Date | string;
   updatedAt: Date | string;
+  /** Bazowe ID zadania, gdy wiersz jest syntetyczną instancją RRULE (GET /tasks z zakresem dat). */
+  originalTaskId?: string;
+  isRecurringInstance?: boolean;
 }
 
 export type TaskPriority = 1 | 2 | 3 | 4;
