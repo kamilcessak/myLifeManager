@@ -12,7 +12,7 @@ export type AppColors = {
 };
 
 export const lightPalette: AppColors = {
-  background: '#f9fafb',
+  background: '#ffffff',
   surface: '#ffffff',
   surfaceMuted: '#f3f4f6',
   text: '#111827',
@@ -25,7 +25,7 @@ export const lightPalette: AppColors = {
 };
 
 export const darkPalette: AppColors = {
-  background: '#0f172a',
+  background: '#121212',
   surface: '#1e293b',
   surfaceMuted: '#334155',
   text: '#f8fafc',

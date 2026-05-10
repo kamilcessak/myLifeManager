@@ -1,20 +1,18 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useLayoutEffect, useMemo } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { updateProfileSchema } from '@mlm/shared';
+import { EditProfileModal } from '../../components/profile/EditProfileModal';
 import type { ProfileStackParamList } from '../../navigation/ProfileStack';
 import { useAuthStore } from '../../store/authStore';
 import { useAppTheme } from '../../theme/AppThemeProvider';
-
-/** Schema gotowe na formularz PATCH /auth/me w Phase 2. */
-export const profileUpdateSchema = updateProfileSchema;
 
 export function ProfileScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList, 'ProfileHome'>>();
   const { colors } = useAppTheme();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const [editOpen, setEditOpen] = useState(false);
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerLeft: undefined });
@@ -37,12 +35,6 @@ export function ProfileScreen() {
         },
         linkText: { fontSize: 16, fontWeight: '600', color: colors.text },
         linkHint: { fontSize: 13, color: colors.textMuted, marginTop: 4 },
-        body: {
-          fontSize: 15,
-          color: colors.textMuted,
-          marginTop: 8,
-          lineHeight: 22,
-        },
         button: {
           marginTop: 20,
           alignSelf: 'flex-start',
@@ -70,6 +62,11 @@ export function ProfileScreen() {
         </>
       ) : null}
 
+      <Pressable style={styles.link} onPress={() => setEditOpen(true)}>
+        <Text style={styles.linkText}>Edytuj profil</Text>
+        <Text style={styles.linkHint}>Zmiana imienia</Text>
+      </Pressable>
+
       <Pressable style={styles.link} onPress={() => navigation.navigate('Preferences')}>
         <Text style={styles.linkText}>Ustawienia wyglądu</Text>
         <Text style={styles.linkHint}>Jasny, ciemny lub zgodny z systemem</Text>
@@ -80,10 +77,6 @@ export function ProfileScreen() {
         <Text style={styles.linkHint}>Eksport RODO, usunięcie konta</Text>
       </Pressable>
 
-      <Text style={styles.body}>
-        Edycja profilu (imię, avatar) — rozszerzenie w kolejnej iteracji; walidacja przez profileUpdateSchema.
-      </Text>
-
       <Pressable
         style={styles.button}
         onPress={() => {
@@ -92,6 +85,12 @@ export function ProfileScreen() {
       >
         <Text style={styles.buttonText}>Wyloguj</Text>
       </Pressable>
+
+      <EditProfileModal
+        visible={editOpen}
+        onClose={() => setEditOpen(false)}
+        initialName={user?.name ?? ''}
+      />
     </View>
   );
 }

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import type { Task } from '@mlm/shared';
 import { AssigneeFilterToggle } from '../../components/AssigneeFilterToggle';
+import { CreateTaskFab } from '../../components/tasks/CreateTaskFab';
 import { TaskListItem } from '../../components/tasks/TaskListItem';
 import { useCompleteTaskMutation } from '../../hooks/useCompleteTaskMutation';
 import { useInboxTasks } from '../../hooks/useInboxTasks';
@@ -106,11 +107,12 @@ export function InboxScreen() {
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         ListEmptyComponent={listEmpty}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, styles.listContentWithFab]}
         refreshControl={
           <RefreshControl refreshing={isFetching && !isLoading} onRefresh={() => void refetch()} />
         }
       />
+      <CreateTaskFab />
     </View>
   );
 }
@@ -127,6 +129,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingTop: 12,
     paddingBottom: 24,
+  },
+  listContentWithFab: {
+    paddingBottom: 100,
   },
   centered: {
     flex: 1,

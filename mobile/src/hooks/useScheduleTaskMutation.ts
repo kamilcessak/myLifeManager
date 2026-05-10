@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Task } from '@mlm/shared';
 import { apiClient } from '../lib/apiClient';
 import { resolveInboxQueryKey, resolveScheduledQueryKey } from '../lib/workspaceTaskQueries';
+import { useWorkspaceStore } from '../store/workspaceStore';
 
 interface ScheduleResponse {
   status: string;
@@ -18,6 +19,7 @@ export type ScheduleTaskVariables = {
 
 export function useScheduleTaskMutation() {
   const queryClient = useQueryClient();
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
 
   return useMutation({
     mutationFn: async ({ taskId, scheduledStart, scheduledEnd }: ScheduleTaskVariables) => {
@@ -100,6 +102,9 @@ export function useScheduleTaskMutation() {
           return aT - bT;
         });
       });
+
+      void queryClient.invalidateQueries({ queryKey: ['tasks', activeWorkspaceId, 'inbox'] });
+      void queryClient.invalidateQueries({ queryKey: ['tasks', activeWorkspaceId, 'scheduled'] });
     },
   });
 }

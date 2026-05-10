@@ -21,6 +21,7 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/pl';
 import { ScheduleSlotModal } from '../../components/calendar/ScheduleSlotModal';
 import { AssigneeFilterToggle } from '../../components/AssigneeFilterToggle';
+import { CreateTaskFab } from '../../components/tasks/CreateTaskFab';
 import {
   buildCalendarEventsFromTasksAndEvents,
   type MlmCalendarEvent,
@@ -32,6 +33,7 @@ import { useScheduleTaskMutation } from '../../hooks/useScheduleTaskMutation';
 import type { AppStackParamList } from '../../navigation/types';
 import { useAssigneeFilterStore } from '../../store/assigneeFilterStore';
 import { useWorkspaceStore } from '../../store/workspaceStore';
+import { useAppTheme } from '../../theme/AppThemeProvider';
 
 dayjs.locale('pl');
 
@@ -45,6 +47,7 @@ function initialFetchRange(): { startIso: string; endIso: string } {
 }
 
 export function CalendarScreen() {
+  const { colors, isDark } = useAppTheme();
   const tabNavigation = useNavigation();
   const stackNavigation =
     tabNavigation.getParent<NativeStackNavigationProp<AppStackParamList>>();
@@ -188,10 +191,10 @@ export function CalendarScreen() {
   const isRefetching = rangeFetching && !rangePending;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <View style={styles.topBar}>
-        <Text style={styles.hint}>
-          Stuknij komórkę, aby zaplanować zadanie z inboxa (blok 1 h).
+        <Text style={[styles.hint, { color: colors.textMuted }]}>
+          Stuknij pustą komórkę godzinową, aby wybrać zadanie z inboxa i zaplanować je na 1 h.
         </Text>
         {isRefetching ? (
           <ActivityIndicator size="small" style={styles.topSpinner} />
@@ -219,11 +222,21 @@ export function CalendarScreen() {
             renderEvent={renderEvent}
             minHour={6}
             maxHour={22}
+            calendarContainerStyle={{ backgroundColor: colors.background }}
+            bodyContainerStyle={{ backgroundColor: colors.background }}
           />
         ) : null}
         {isInitialLoading && calHeight > 0 ? (
-          <View style={styles.loadingOverlay} pointerEvents="none">
-            <ActivityIndicator size="large" />
+          <View
+            style={[
+              styles.loadingOverlay,
+              {
+                backgroundColor: isDark ? 'rgba(18,18,18,0.72)' : 'rgba(255,255,255,0.72)',
+              },
+            ]}
+            pointerEvents="none"
+          >
+            <ActivityIndicator size="large" color={colors.primary} />
           </View>
         ) : null}
       </View>
@@ -237,6 +250,7 @@ export function CalendarScreen() {
         onSelectTask={handleSelectTask}
         isScheduling={scheduleMutation.isPending}
       />
+      <CreateTaskFab />
     </SafeAreaView>
   );
 }
@@ -248,7 +262,6 @@ const styles = StyleSheet.create({
   },
   safe: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
   },
   topBar: {
     paddingHorizontal: 16,
@@ -261,7 +274,6 @@ const styles = StyleSheet.create({
   hint: {
     flex: 1,
     fontSize: 13,
-    color: '#4B5563',
     lineHeight: 18,
   },
   topSpinner: {
@@ -283,7 +295,6 @@ const styles = StyleSheet.create({
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.65)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
