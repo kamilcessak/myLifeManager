@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -33,7 +33,15 @@
           "icon": "./assets/icon.png",
           "color": "#ffffff"
         }
-      ]
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Aplikacja potrzebuje dostępu do zdjęć, aby dodać załączniki do zadań i wydarzeń.",
+          "cameraPermission": "Aplikacja potrzebuje dostępu do aparatu, aby zrobić zdjęcie jako załącznik."
+        }
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }

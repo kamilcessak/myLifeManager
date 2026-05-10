@@ -46,3 +46,11 @@ export function teamMembersQueryKey(teamId: string) {
 export function taskActivityQueryKey(activityTaskId: string) {
   return ['tasks', activityTaskId, 'activity'] as const;
 }
+
+export function taskDetailQueryKey(taskId: string) {
+  return ['tasks', 'detail', taskId] as const;
+}
+
+export function eventDetailQueryKey(eventId: string) {
+  return ['events', 'detail', eventId] as const;
+}

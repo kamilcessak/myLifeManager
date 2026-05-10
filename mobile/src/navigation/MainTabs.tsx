@@ -2,7 +2,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { WorkspaceSwitcher } from '../components/WorkspaceSwitcher';
 import { CalendarScreen } from '../screens/main/CalendarScreen';
 import { InboxScreen } from '../screens/main/InboxScreen';
-import { ProfileScreen } from '../screens/main/ProfileScreen';
+import { ProfileStack } from './ProfileStack';
 
 export type MainTabParamList = {
   Inbox: undefined;
@@ -22,7 +22,11 @@ export function MainTabs() {
     >
       <Tab.Screen name="Inbox" component={InboxScreen} options={{ title: 'Skrzynka' }} />
       <Tab.Screen name="Calendar" component={CalendarScreen} options={{ title: 'Kalendarz' }} />
-      <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profil' }} />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileStack}
+        options={{ title: 'Profil', headerShown: false }}
+      />
     </Tab.Navigator>
   );
 }

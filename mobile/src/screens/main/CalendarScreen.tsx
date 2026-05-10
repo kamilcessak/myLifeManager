@@ -97,11 +97,7 @@ export function CalendarScreen() {
         return;
       }
       if (ev.itemKind === 'event' && ev.sourceEvent) {
-        const stable = getEventStableId(ev.sourceEvent);
-        const lines = ev.sourceEvent.isRecurringInstance
-          ? `Instancja: ${ev.sourceEvent.id}\nID bazowe (szczegóły): ${stable}`
-          : `ID: ${stable}`;
-        Alert.alert('Wydarzenie', `${ev.sourceEvent.title}\n\n${lines}`);
+        stackNavigation?.navigate('EventEdit', { eventId: getEventStableId(ev.sourceEvent) });
       }
     },
     [stackNavigation],

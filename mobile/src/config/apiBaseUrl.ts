@@ -18,3 +18,18 @@ export function getApiBaseUrl(): string {
   const host = Platform.OS === "android" ? "192.168.1.69" : "localhost";
   return `http://${host}:${API_PORT}/api`;
 }
+
+/** Origin hosting `/api` and static `/uploads` (no trailing slash). */
+export function getApiOrigin(): string {
+  const base = getApiBaseUrl().replace(/\/$/, "");
+  return base.replace(/\/api\/?$/i, "") || base;
+}
+
+/** Turn API-relative paths (`/uploads/...`) into a fetchable URL on the device. */
+export function resolveMediaUrl(relativeOrAbsolute: string): string {
+  if (relativeOrAbsolute.startsWith("http://") || relativeOrAbsolute.startsWith("https://")) {
+    return relativeOrAbsolute;
+  }
+  const path = relativeOrAbsolute.startsWith("/") ? relativeOrAbsolute : `/${relativeOrAbsolute}`;
+  return `${getApiOrigin()}${path}`;
+}

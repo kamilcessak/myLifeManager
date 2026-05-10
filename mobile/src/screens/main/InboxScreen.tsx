@@ -19,11 +19,13 @@ import { getApiErrorMessage } from '../../lib/apiErrors';
 import type { AppStackParamList } from '../../navigation/types';
 import { useAssigneeFilterStore } from '../../store/assigneeFilterStore';
 import { useWorkspaceStore } from '../../store/workspaceStore';
+import { useAppTheme } from '../../theme/AppThemeProvider';
 
 /** Eksport typu dla zapytań inbox (taskQuerySchema / teamId). */
 export type { TaskQuery } from '@mlm/shared';
 
 export function InboxScreen() {
+  const { colors } = useAppTheme();
   const tabNavigation = useNavigation();
   const stackNavigation =
     tabNavigation.getParent<NativeStackNavigationProp<AppStackParamList>>();
@@ -77,28 +79,28 @@ export function InboxScreen() {
     if (isLoading) {
       return (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       );
     }
     if (isError) {
       return (
         <View style={styles.centered}>
-          <Text style={styles.errorTitle}>Nie udało się wczytać skrzynki</Text>
-          <Text style={styles.errorBody}>{getApiErrorMessage(error)}</Text>
+          <Text style={[styles.errorTitle, { color: colors.danger }]}>Nie udało się wczytać skrzynki</Text>
+          <Text style={[styles.errorBody, { color: colors.textMuted }]}>{getApiErrorMessage(error)}</Text>
         </View>
       );
     }
     return (
       <View style={styles.centered}>
-        <Text style={styles.emptyTitle}>Brak zadań w skrzynce</Text>
-        <Text style={styles.emptyBody}>Nowe zadania pojawią się tutaj.</Text>
+        <Text style={[styles.emptyTitle, { color: colors.text }]}>Brak zadań w skrzynce</Text>
+        <Text style={[styles.emptyBody, { color: colors.textMuted }]}>Nowe zadania pojawią się tutaj.</Text>
       </View>
     );
-  }, [isLoading, isError, error]);
+  }, [isLoading, isError, error, colors.danger, colors.text, colors.textMuted, colors.primary]);
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <FlatList
         data={tasks ?? []}
         keyExtractor={keyExtractor}
@@ -120,7 +122,6 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
-    backgroundColor: '#f9fafb',
   },
   listContent: {
     flexGrow: 1,
@@ -137,24 +138,20 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#b91c1c',
     marginBottom: 8,
     textAlign: 'center',
   },
   errorBody: {
     fontSize: 15,
-    color: '#4b5563',
     textAlign: 'center',
   },
   emptyTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111827',
     marginBottom: 6,
   },
   emptyBody: {
     fontSize: 15,
-    color: '#6b7280',
     textAlign: 'center',
   },
 });

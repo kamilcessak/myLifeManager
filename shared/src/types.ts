@@ -59,6 +59,22 @@ export interface Category {
   team?: Team;
 }
 
+// ==================== ATTACHMENT ====================
+export interface Attachment {
+  id: string;
+  filename: string;
+  originalName: string;
+  mimetype: string;
+  size: number;
+  /** Public path served by API, e.g. `/uploads/...` */
+  url: string;
+  taskId: string | null;
+  eventId: string | null;
+  userId?: string | null;
+  expiresAt?: string | null;
+  createdAt: Date | string;
+}
+
 // ==================== TASK ====================
 export interface Task {
   id: string;
@@ -84,6 +100,7 @@ export interface Task {
   /** Bazowe ID zadania, gdy wiersz jest syntetyczną instancją RRULE (GET /tasks z zakresem dat). */
   originalTaskId?: string;
   isRecurringInstance?: boolean;
+  attachments?: Attachment[];
 }
 
 export type TaskPriority = 1 | 2 | 3 | 4;
@@ -134,6 +151,7 @@ export interface Event {
   // For recurring event instances
   originalEventId?: string;
   isRecurringInstance?: boolean;
+  attachments?: Attachment[];
 }
 
 // ==================== CALENDAR ====================

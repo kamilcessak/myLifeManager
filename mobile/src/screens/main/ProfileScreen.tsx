@@ -1,20 +1,64 @@
 import { useNavigation } from '@react-navigation/native';
-import { useLayoutEffect } from 'react';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useLayoutEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { updateProfileSchema } from '@mlm/shared';
+import type { ProfileStackParamList } from '../../navigation/ProfileStack';
 import { useAuthStore } from '../../store/authStore';
+import { useAppTheme } from '../../theme/AppThemeProvider';
 
 /** Schema gotowe na formularz PATCH /auth/me w Phase 2. */
 export const profileUpdateSchema = updateProfileSchema;
 
 export function ProfileScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList, 'ProfileHome'>>();
+  const { colors } = useAppTheme();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerLeft: undefined });
   }, [navigation]);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, padding: 20, gap: 10, backgroundColor: colors.background },
+        title: { fontSize: 22, fontWeight: '700', marginBottom: 4, color: colors.text },
+        meta: { fontSize: 16, marginBottom: 4, color: colors.text },
+        link: {
+          marginTop: 8,
+          backgroundColor: colors.surface,
+          borderWidth: 1,
+          borderColor: colors.border,
+          paddingVertical: 14,
+          paddingHorizontal: 16,
+          borderRadius: 12,
+        },
+        linkText: { fontSize: 16, fontWeight: '600', color: colors.text },
+        linkHint: { fontSize: 13, color: colors.textMuted, marginTop: 4 },
+        body: {
+          fontSize: 15,
+          color: colors.textMuted,
+          marginTop: 8,
+          lineHeight: 22,
+        },
+        button: {
+          marginTop: 20,
+          alignSelf: 'flex-start',
+          backgroundColor: colors.danger,
+          paddingVertical: 12,
+          paddingHorizontal: 20,
+          borderRadius: 8,
+        },
+        buttonText: {
+          color: '#fff',
+          fontWeight: '600',
+          fontSize: 16,
+        },
+      }),
+    [colors],
+  );
 
   return (
     <View style={styles.container}>
@@ -25,10 +69,21 @@ export function ProfileScreen() {
           <Text style={styles.meta}>Imię: {user.name ?? '—'}</Text>
         </>
       ) : null}
+
+      <Pressable style={styles.link} onPress={() => navigation.navigate('Preferences')}>
+        <Text style={styles.linkText}>Ustawienia wyglądu</Text>
+        <Text style={styles.linkHint}>Jasny, ciemny lub zgodny z systemem</Text>
+      </Pressable>
+
+      <Pressable style={styles.link} onPress={() => navigation.navigate('Account')}>
+        <Text style={styles.linkText}>Konto i dane</Text>
+        <Text style={styles.linkHint}>Eksport RODO, usunięcie konta</Text>
+      </Pressable>
+
       <Text style={styles.body}>
-        {/* TODO(Phase 2): PATCH /api/auth/me + UpdateProfileInput / profileUpdateSchema */}
-        Edycja danych konta — w kolejnej fazie, z walidacją przez profileUpdateSchema.
+        Edycja profilu (imię, avatar) — rozszerzenie w kolejnej iteracji; walidacja przez profileUpdateSchema.
       </Text>
+
       <Pressable
         style={styles.button}
         onPress={() => {
@@ -40,39 +95,3 @@ export function ProfileScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-    gap: 8,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  meta: {
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  body: {
-    fontSize: 16,
-    color: '#444',
-    marginTop: 8,
-    lineHeight: 22,
-  },
-  button: {
-    marginTop: 24,
-    alignSelf: 'flex-start',
-    backgroundColor: '#dc2626',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-});
